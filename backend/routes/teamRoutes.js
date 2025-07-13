@@ -47,7 +47,7 @@ router.post("/createTeam", verifyToken, async (req, res) => {
 });
 
 // Get teams under a project server
-router.get("/by-project/:projectServerId", verifyToken, async (req, res) => {
+router.get("/byProjectServer/:projectServerId", verifyToken, async (req, res) => {
   try {
     const { projectServerId } = req.params;
 
@@ -60,10 +60,10 @@ router.get("/by-project/:projectServerId", verifyToken, async (req, res) => {
 });
 
 // Get teams a student has joined
-router.get("/by-student/:studentId", verifyToken, async (req, res) => {
+router.get("/byStudent/:studentId", verifyToken, async (req, res) => {
   try {
     const { studentId } = req.params;
-
+    // or to use studentId without params use "studnetId = req.user.id" and remove the params from the url
     const student = await Student.findById(studentId).populate("joinedTeams");
     if (!student) return res.status(404).json({ message: "Student not found" });
 

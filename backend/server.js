@@ -8,7 +8,9 @@ const FacultyRoutes = require("./routes/facultyRoutes.js");
 const StudentRoutes = require("./routes/studentRoutes.js");
 const projectServerRoutes = require("./routes/projectServerRoutes");
 const teamRoutes=require("./routes/teamRoutes.js")
-    
+const taskRoutes = require("./routes/taskRoutes.js")
+
+
 const app = express();
 const PORT = process.env.PORT || 5000;
 
@@ -18,8 +20,8 @@ const MONGO_URI = "mongodb+srv://yashr:NPuILa9Awq8H0DED@cluster0.optidea.mongodb
 // Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-// Middleware
 app.use(cookieParser());
+
 // CORS Setup
 const corsOptions = {
   origin: '*',
@@ -39,6 +41,7 @@ app.use("/api/faculty", FacultyRoutes);
 app.use("/api/student", StudentRoutes);
 app.use("/api/projectServers", projectServerRoutes);
 app.use("/api/teamRoutes",teamRoutes)
+app.use("/api/task",taskRoutes)
 // Connect to MongoDB and start server
 mongoose.connect(MONGO_URI)
   .then(() => {

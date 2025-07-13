@@ -8,6 +8,7 @@ const facultySchema = new mongoose.Schema({
   phone: { type: String, required: true },
   username: { type: String, required: true, unique: true },
   password: { type: String, required: true }, // Hashed
+  role: { type: String, default: 'Faculty' },
   createdAt: { type: Date, default: Date.now },
 });
 

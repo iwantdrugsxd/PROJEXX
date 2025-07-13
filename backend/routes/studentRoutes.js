@@ -19,7 +19,7 @@ router.post("/login", async (req, res) => {
     const isMatch = await bcrypt.compare(password, student.password);
     if (!isMatch) return res.status(401).json({ message: "Invalid password" });
 
-    const token = jwt.sign({ id: student._id, role: "student" }, jwtSecret, {
+    const token = jwt.sign({ id: student._id, role:student.role }, jwtSecret, {
       expiresIn: jwtExpiresIn,
     });
 
