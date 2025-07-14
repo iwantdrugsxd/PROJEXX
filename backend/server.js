@@ -3,6 +3,10 @@ const mongoose = require('mongoose');
 const cors = require('cors'); // ✅ You forgot this!
 const cookieParser = require("cookie-parser");
 
+
+const app = express();
+const PORT = process.env.PORT || 5000;
+
 // importing routes
 const FacultyRoutes = require("./routes/facultyRoutes.js");
 const StudentRoutes = require("./routes/studentRoutes.js");
@@ -11,8 +15,6 @@ const teamRoutes=require("./routes/teamRoutes.js")
 const taskRoutes = require("./routes/taskRoutes.js")
 
 
-const app = express();
-const PORT = process.env.PORT || 5000;
 
 // MongoDB connection URI
 const MONGO_URI = "mongodb+srv://yashr:NPuILa9Awq8H0DED@cluster0.optidea.mongodb.net/project_management?retryWrites=true&w=majority&appName=Cluster0";
@@ -21,6 +23,7 @@ const MONGO_URI = "mongodb+srv://yashr:NPuILa9Awq8H0DED@cluster0.optidea.mongodb
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
+app.use('/uploads', express.static('uploads'));
 
 // CORS Setup
 const corsOptions = {

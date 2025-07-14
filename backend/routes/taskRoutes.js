@@ -56,9 +56,11 @@ router.post("/:taskId/comment", verifyToken, async (req, res) => {
   }
 });
 
-// POST /tasks/:taskId/attachments - Upload attachment
+// POST /tasks/:taskId/attachments - Upload attachment with tagged members
 router.post("/:taskId/attachments", verifyToken, upload.single("file"), async (req, res) => {
   try {
+    const { taggedMembers } = req.body; // Expect array of user IDs
+
     const task = await Task.findById(req.params.taskId);
     if (!task) return res.status(404).json({ message: "Task not found" });
 
@@ -66,12 +68,14 @@ router.post("/:taskId/attachments", verifyToken, upload.single("file"), async (r
       filename: req.file.filename,
       url: `/uploads/${req.file.filename}`,
       uploadedBy: req.user.id,
+      taggedMembers: taggedMembers ? JSON.parse(taggedMembers) : []  // If sent as JSON string in form-data
     };
 
     task.attachments.push(fileData);
     await task.save();
 
     res.status(200).json({ message: "Attachment uploaded", attachment: fileData });
+
   } catch (err) {
     res.status(500).json({ message: "Error uploading attachment", error: err.message });
   }

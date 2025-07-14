@@ -21,18 +21,24 @@ const taskSchema = new mongoose.Schema({
     required: true,
     enum: ['Faculty', 'Student']
   },
-
-  attachments: [
-    {
-      filename: String,
-      url: String,
-      uploadedBy: {
+attachments: [
+  {
+    filename: String,
+    url: String,
+    uploadedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Student"
+    },
+    taggedMembers: [
+      {
         type: mongoose.Schema.Types.ObjectId,
-        ref: "Student"
-      },
-      uploadedAt: { type: Date, default: Date.now },
-    }
-  ],
+        ref: "Student"   // Or use refPath if Faculty can be tagged too
+      }
+    ],
+    uploadedAt: { type: Date, default: Date.now },
+  }
+],
+
 
   comments: [
     {
@@ -50,6 +56,8 @@ const taskSchema = new mongoose.Schema({
       createdAt: { type: Date, default: Date.now }
     }
   ],
+  
+  dueDate: { type: Date, required: true }, 
 
   status: {
     type: String,

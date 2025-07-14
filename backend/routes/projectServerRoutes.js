@@ -48,7 +48,7 @@ router.get("/faculty/:facultyId", verifyToken, async (req, res) => {
 });
 
 // ✅ Get server by join code (for joining)
-router.get("/by-code/:code", async (req, res) => {
+router.get("/byCode/:code", async (req, res) => {
   try {
     const server = await ProjectServer.findOne({ code: req.params.code }).populate("faculty");
     if (!server) return res.status(404).json({ message: "Invalid project server code" });

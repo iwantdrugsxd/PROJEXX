@@ -9,6 +9,7 @@ const studentTeamSchema = new mongoose.Schema({
       ref: "Student",
     }
   ],
+  problemStatement:{type: String, required: true},
   projectServer: {
     type: String,
     ref: "ProjectServer",
