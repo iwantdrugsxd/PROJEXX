@@ -9,13 +9,11 @@ const bcrypt = require('bcryptjs');
 const { jwtSecret, jwtExpiresIn } = require("../config/jwt");
 const verifyToken = require("../middleware/verifyToken");
 
-
 router.get("/dashboard", verifyToken, (req, res) => {
-    try{
-
+    try {
         res.json({ message: `Hello, ${req.user.role}!`, userId: req.user.id });
-    }catch(err){
-        console.log(err)
+    } catch(err) {
+        console.log(err);
     }
 });
 
@@ -30,7 +28,7 @@ router.post("/login", async (req, res) => {
     const isMatch = await bcrypt.compare(password, faculty.password);
     if (!isMatch) return res.status(401).json({ message: "Invalid password" });
 
-    const token = jwt.sign({ id: faculty._id, role:faculty.role }, jwtSecret, {
+    const token = jwt.sign({ id: faculty._id, role: faculty.role }, jwtSecret, {
       expiresIn: jwtExpiresIn,
     });
 
@@ -47,31 +45,31 @@ router.post("/login", async (req, res) => {
         id: faculty._id,
         name: faculty.firstName + " " + faculty.lastName,
         email: faculty.email,
+        firstName: faculty.firstName,
+        lastName: faculty.lastName,
       },
     });
   } catch (err) {
     res.status(500).json({ message: "Login failed", error: err.message });
-}
+  }
 });
 
 // Logout
 router.post("/logout", (req, res) => {
-    try{
-        // if(!token) res.status(500).json({ message: "no token", error: err.message });
+    try {
         res.clearCookie("token");
         res.status(200).json({ message: "Logout successful" });
-    }catch(err){
+    } catch(err) {
         res.status(500).json({ message: "Logout failed", error: err.message });
-        console.log(err)
+        console.log(err);
     }
 });
 
-//create faculty
+// Create faculty
 router.post("/createFaculty", async (req, res) => {
-
-try {
-    const{
-            firstName, lastName, email, phone, username, password} = req.body
+    try {
+        const { firstName, lastName, email, phone, username, password } = req.body;
+        
         // Check if the user already exists
         const existingUser = await Faculty.findOne({ email });
         if (existingUser) {
@@ -83,8 +81,14 @@ try {
 
         // Create a new user without userId, which will be auto-generated
         const newFaculty = new Faculty({
-            firstName, lastName, email, phone, username, password:hashedPassword
+            firstName, 
+            lastName, 
+            email, 
+            phone, 
+            username, 
+            password: hashedPassword
         });
+        
         console.log("New user object before save:", newFaculty);
         await newFaculty.save();
         res.status(201).json({ message: 'User registered successfully' });

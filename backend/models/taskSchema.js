@@ -1,5 +1,6 @@
-// Task.js
+// backend/models/taskSchema.js
 const mongoose = require("mongoose");
+
 const taskSchema = new mongoose.Schema({
   title: { type: String, required: true },
   description: { type: String },
@@ -10,7 +11,7 @@ const taskSchema = new mongoose.Schema({
     required: true,
   },
 
-  // 🔄 Polymorphic creator
+  // Polymorphic creator
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
     required: true,
@@ -21,24 +22,24 @@ const taskSchema = new mongoose.Schema({
     required: true,
     enum: ['Faculty', 'Student']
   },
-attachments: [
-  {
-    filename: String,
-    url: String,
-    uploadedBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Student"
-    },
-    taggedMembers: [
-      {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "Student"   // Or use refPath if Faculty can be tagged too
-      }
-    ],
-    uploadedAt: { type: Date, default: Date.now },
-  }
-],
 
+  attachments: [
+    {
+      filename: String,
+      url: String,
+      uploadedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Student"
+      },
+      taggedMembers: [
+        {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "Student"
+        }
+      ],
+      uploadedAt: { type: Date, default: Date.now },
+    }
+  ],
 
   comments: [
     {
@@ -57,7 +58,7 @@ attachments: [
     }
   ],
   
-  dueDate: { type: Date, required: true }, 
+  dueDate: { type: Date },
 
   status: {
     type: String,

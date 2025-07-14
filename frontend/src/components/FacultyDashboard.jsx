@@ -1,28 +1,9 @@
-import React, { useState, useContext, useEffect } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import { AuthContext, API_BASE } from '../App';
 import { 
-  User, 
-  BookOpen, 
-  Users, 
-  Plus, 
-  Settings, 
-  LogOut, 
-  Bell, 
-  Search,
-  Calendar,
-  TrendingUp,
-  Target,
-  Award,
-  MessageSquare,
-  FileText,
-  ChevronRight,
-  Copy,
-  Eye,
-  Edit,
-  Download,
-  Filter,
-  BarChart3,
-  Clock
+  BookOpen, Target, Users, BarChart3, FileText, Calendar, MessageSquare, Settings,
+  Search, Bell, LogOut, Plus, Copy, Eye, Edit, Trash2, UserPlus, CheckCircle,
+  Clock, TrendingUp, Award, Filter, Download, Share2, Code, Server
 } from 'lucide-react';
 
 function FacultyDashboard() {
@@ -32,122 +13,112 @@ function FacultyDashboard() {
   const [students, setStudents] = useState([]);
   const [analytics, setAnalytics] = useState({});
   const [notifications, setNotifications] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchFacultyData();
+    loadDashboardData();
   }, []);
 
-  const fetchFacultyData = async () => {
-    // Mock data - replace with real API calls
-    setProjects([
-      {
-        id: 1,
-        title: "Web Development Bootcamp",
-        description: "Full-stack web development course project",
-        code: "PRJ-WEB123",
-        teams: 8,
-        students: 32,
-        status: "Active",
-        createdAt: "2024-01-15",
-        progress: 65,
-        dueDate: "2024-03-15"
-      },
-      {
-        id: 2,
-        title: "AI & Machine Learning",
-        description: "Advanced AI research project",
-        code: "PRJ-AI456",
-        teams: 5,
-        students: 20,
-        status: "Active", 
-        createdAt: "2024-01-20",
-        progress: 45,
-        dueDate: "2024-04-01"
-      },
-      {
-        id: 3,
-        title: "Mobile App Development",
-        description: "iOS and Android app development",
-        code: "PRJ-MOB789",
-        teams: 6,
-        students: 24,
-        status: "Completed",
-        createdAt: "2023-12-01",
-        progress: 100,
-        dueDate: "2024-01-30"
-      }
-    ]);
+  const loadDashboardData = async () => {
+    try {
+      setLoading(true);
+      
+      // Mock data for demonstration
+      setProjects([
+        { _id: 1, title: "Web Development Course", description: "Learn modern web development", code: "WEB001", createdAt: new Date() },
+        { _id: 2, title: "Mobile App Development", description: "Build mobile applications", code: "MOB001", createdAt: new Date() }
+      ]);
 
-    setStudents([
-      { id: 1, name: "Alice Johnson", email: "alice@student.edu", teams: 2, projects: 3, performance: 92, status: "Active", lastSeen: "2 hours ago" },
-      { id: 2, name: "Bob Smith", email: "bob@student.edu", teams: 1, projects: 2, performance: 88, status: "Active", lastSeen: "1 day ago" },
-      { id: 3, name: "Carol Davis", email: "carol@student.edu", teams: 3, projects: 4, performance: 95, status: "Active", lastSeen: "30 minutes ago" },
-      { id: 4, name: "David Wilson", email: "david@student.edu", teams: 2, projects: 3, performance: 78, status: "Inactive", lastSeen: "3 days ago" },
-      { id: 5, name: "Emma Brown", email: "emma@student.edu", teams: 1, projects: 2, performance: 91, status: "Active", lastSeen: "5 hours ago" }
-    ]);
+      setStudents([
+        { id: 1, name: "Alice Johnson", email: "alice@student.edu", teams: 2, projects: 3, performance: 92, status: "Active", lastSeen: "2 hours ago" },
+        { id: 2, name: "Bob Smith", email: "bob@student.edu", teams: 1, projects: 2, performance: 88, status: "Active", lastSeen: "1 day ago" },
+        { id: 3, name: "Carol Davis", email: "carol@student.edu", teams: 3, projects: 4, performance: 95, status: "Active", lastSeen: "30 minutes ago" },
+        { id: 4, name: "David Wilson", email: "david@student.edu", teams: 2, projects: 3, performance: 78, status: "Inactive", lastSeen: "3 days ago" },
+        { id: 5, name: "Emma Brown", email: "emma@student.edu", teams: 1, projects: 2, performance: 91, status: "Active", lastSeen: "5 hours ago" }
+      ]);
 
-    setAnalytics({
-      totalProjects: 3,
-      activeProjects: 2,
-      totalStudents: 76,
-      completionRate: 78,
-      avgPerformance: 91.7,
-      totalTeams: 19,
-      thisMonthSubmissions: 145,
-      pendingReviews: 23
-    });
+      setAnalytics({
+        totalProjects: 2,
+        activeProjects: 2,
+        totalStudents: 76,
+        completionRate: 78,
+        avgPerformance: 91.7,
+        totalTeams: 19,
+        thisMonthSubmissions: 145,
+        pendingReviews: 23
+      });
 
-    setNotifications([
-      {
-        id: 1,
-        type: "submission",
-        title: "New project submission",
-        message: "Team Alpha submitted their web development project",
-        time: "2 hours ago",
-        unread: true
-      },
-      {
-        id: 2,
-        type: "student",
-        title: "Student joined project",
-        message: "New student joined AI & Machine Learning project",
-        time: "4 hours ago",
-        unread: true
-      },
-      {
-        id: 3,
-        type: "deadline",
-        title: "Project deadline approaching",
-        message: "Mobile App Development project due in 3 days",
-        time: "1 day ago",
-        unread: false
-      }
-    ]);
+      setNotifications([
+        {
+          id: 1,
+          type: "submission",
+          title: "New project submission",
+          message: "Team Alpha submitted their web development project",
+          time: "2 hours ago",
+          unread: true
+        },
+        {
+          id: 2,
+          type: "student",
+          title: "Student joined project",
+          message: "New student joined AI & Machine Learning project",
+          time: "4 hours ago",
+          unread: true
+        },
+        {
+          id: 3,
+          type: "deadline",
+          title: "Project deadline approaching",
+          message: "Mobile App Development project due in 3 days",
+          time: "1 day ago",
+          unread: false
+        }
+      ]);
+    } catch (error) {
+      console.error('Failed to load dashboard data:', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleLogout = async () => {
     try {
+      // Call the actual logout API endpoint
       await fetch(`${API_BASE}/faculty/logout`, {
         method: 'POST',
         credentials: 'include'
       });
+      
+      // Clear user state and redirect to landing page
       setUser(null);
       setCurrentView('landing');
     } catch (error) {
       console.error('Logout failed:', error);
+      // Even if API call fails, clear the local state
+      setUser(null);
+      setCurrentView('landing');
     }
   };
 
   const sidebarItems = [
     { id: 'overview', label: 'Overview', icon: Target },
-    { id: 'projects', label: 'Projects', icon: BookOpen },
+    { id: 'servers', label: 'Project Servers', icon: Server },
+    { id: 'teams', label: 'Teams', icon: Users },
+    { id: 'tasks', label: 'Tasks', icon: FileText },
     { id: 'students', label: 'Students', icon: Users },
     { id: 'analytics', label: 'Analytics', icon: BarChart3 },
-    { id: 'assignments', label: 'Assignments', icon: FileText },
     { id: 'calendar', label: 'Calendar', icon: Calendar },
     { id: 'messages', label: 'Messages', icon: MessageSquare },
     { id: 'settings', label: 'Settings', icon: Settings }
   ];
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-purple-500"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -178,26 +149,29 @@ function FacultyDashboard() {
               
               {/* Notifications */}
               <div className="relative">
-                <button className="p-2 text-gray-600 hover:text-purple-600 hover:bg-purple-50 rounded-xl transition-all duration-200 relative">
+                <button className="p-2 text-gray-600 hover:text-purple-600 hover:bg-purple-50 rounded-xl transition-colors duration-200 relative">
                   <Bell className="w-5 h-5" />
                   {notifications.filter(n => n.unread).length > 0 && (
-                    <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full"></span>
+                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                      {notifications.filter(n => n.unread).length}
+                    </span>
                   )}
                 </button>
               </div>
               
-              {/* User Menu */}
-              <div className="flex items-center space-x-3 bg-gray-100 rounded-xl px-3 py-2">
-                <div className="w-8 h-8 bg-gradient-to-r from-purple-500 to-indigo-600 rounded-lg flex items-center justify-center">
-                  <User className="w-5 h-5 text-white" />
+              {/* Profile */}
+              <div className="flex items-center space-x-3">
+                <div className="text-right">
+                  <p className="text-sm font-medium text-gray-800">{user?.firstName || user?.name || 'Faculty'} {user?.lastName || ''}</p>
+                  <p className="text-xs text-gray-600">Faculty</p>
                 </div>
-                <div className="hidden sm:block">
-                  <p className="text-sm font-medium text-gray-700">{user?.name || 'Professor'}</p>
-                  <p className="text-xs text-gray-500">Faculty</p>
+                <div className="w-8 h-8 bg-gradient-to-r from-purple-500 to-indigo-600 rounded-full flex items-center justify-center text-white font-medium">
+                  {user?.firstName?.charAt(0) || user?.name?.charAt(0) || 'F'}{user?.lastName?.charAt(0) || ''}
                 </div>
-                <button
+                <button 
                   onClick={handleLogout}
-                  className="p-1 text-gray-500 hover:text-red-600 transition-colors duration-200"
+                  className="p-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-xl transition-colors duration-200"
+                  title="Logout"
                 >
                   <LogOut className="w-4 h-4" />
                 </button>
@@ -210,7 +184,7 @@ function FacultyDashboard() {
       <div className="flex">
         {/* Sidebar */}
         <aside className="w-64 bg-white border-r border-gray-200 min-h-screen">
-          <nav className="p-6">
+          <nav className="p-4">
             <div className="space-y-2">
               {sidebarItems.map((item) => {
                 const Icon = item.icon;
@@ -218,7 +192,7 @@ function FacultyDashboard() {
                   <button
                     key={item.id}
                     onClick={() => setActiveTab(item.id)}
-                    className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-left transition-all duration-200 ${
+                    className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all duration-200 ${
                       activeTab === item.id
                         ? 'bg-gradient-to-r from-purple-500 to-indigo-600 text-white shadow-lg transform scale-105'
                         : 'text-gray-600 hover:bg-purple-50 hover:text-purple-600'
@@ -235,11 +209,12 @@ function FacultyDashboard() {
 
         {/* Main Content */}
         <main className="flex-1 p-6">
-          {activeTab === 'overview' && <OverviewTab analytics={analytics} projects={projects} notifications={notifications} setActiveTab={setActiveTab} />}
-          {activeTab === 'projects' && <ProjectsTab projects={projects} setProjects={setProjects} />}
+          {activeTab === 'overview' && <OverviewTab analytics={analytics} notifications={notifications} />}
+          {activeTab === 'servers' && <ServersTab projects={projects} setProjects={setProjects} />}
+          {activeTab === 'teams' && <TeamsTab />}
+          {activeTab === 'tasks' && <TasksTab />}
           {activeTab === 'students' && <StudentsTab students={students} />}
           {activeTab === 'analytics' && <AnalyticsTab analytics={analytics} projects={projects} />}
-          {activeTab === 'assignments' && <AssignmentsTab />}
           {activeTab === 'calendar' && <CalendarTab />}
           {activeTab === 'messages' && <MessagesTab />}
           {activeTab === 'settings' && <SettingsTab />}
@@ -249,13 +224,220 @@ function FacultyDashboard() {
   );
 }
 
+// Project Servers Tab Component
+function ServersTab({ projects, setProjects }) {
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [newServer, setNewServer] = useState({ title: '', description: '' });
+  const [loading, setLoading] = useState(false);
+  const [copiedCode, setCopiedCode] = useState('');
+
+  const createServer = async (e) => {
+    e.preventDefault();
+    if (!newServer.title.trim()) return;
+
+    setLoading(true);
+    
+    try {
+      // Mock server creation
+      const mockServer = {
+        _id: Date.now(),
+        title: newServer.title,
+        description: newServer.description,
+        code: `${newServer.title.substring(0, 3).toUpperCase()}${Math.floor(Math.random() * 1000)}`,
+        createdAt: new Date()
+      };
+      
+      setProjects(prev => [mockServer, ...prev]);
+      setNewServer({ title: '', description: '' });
+      setShowCreateModal(false);
+    } catch (error) {
+      console.error('Failed to create server:', error);
+      alert('Failed to create server');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const copyServerCode = (code) => {
+    navigator.clipboard.writeText(code);
+    setCopiedCode(code);
+    setTimeout(() => setCopiedCode(''), 2000);
+  };
+
+  const generateWhatsAppMessage = (server) => {
+    const message = `🚀 Join our Project Server: "${server.title}"
+
+Use this code to join: ${server.code}
+
+${server.description ? `Description: ${server.description}` : ''}
+
+Copy the code and join through the ProjectFlow app!`;
+    
+    const encodedMessage = encodeURIComponent(message);
+    return `https://wa.me/?text=${encodedMessage}`;
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-800">Project Servers</h2>
+          <p className="text-gray-600">Create and manage project servers for your courses</p>
+        </div>
+        <button
+          onClick={() => setShowCreateModal(true)}
+          className="flex items-center space-x-2 bg-gradient-to-r from-purple-500 to-indigo-600 text-white px-6 py-3 rounded-xl hover:from-purple-600 hover:to-indigo-700 transition-all duration-300 transform hover:scale-105"
+        >
+          <Plus className="w-5 h-5" />
+          <span>Create Server</span>
+        </button>
+      </div>
+
+      {/* Create Server Modal */}
+      {showCreateModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md mx-4">
+            <h3 className="text-xl font-bold text-gray-800 mb-4">Create Project Server</h3>
+            <form onSubmit={createServer} className="space-y-4">
+              <div>
+                <label className="block text-gray-700 font-medium mb-2">Server Title *</label>
+                <input
+                  type="text"
+                  value={newServer.title}
+                  onChange={(e) => setNewServer(prev => ({ ...prev, title: e.target.value }))}
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-purple-100 focus:border-purple-400"
+                  placeholder="e.g., Web Development Course"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-gray-700 font-medium mb-2">Description</label>
+                <textarea
+                  value={newServer.description}
+                  onChange={(e) => setNewServer(prev => ({ ...prev, description: e.target.value }))}
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-purple-100 focus:border-purple-400 h-24 resize-none"
+                  placeholder="Brief description of the project server..."
+                />
+              </div>
+              <div className="flex space-x-3">
+                <button
+                  type="button"
+                  onClick={() => setShowCreateModal(false)}
+                  className="flex-1 px-4 py-3 border border-gray-200 text-gray-600 rounded-xl hover:bg-gray-50 transition-colors duration-200"
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit"
+                  disabled={loading || !newServer.title.trim()}
+                  className="flex-1 px-4 py-3 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-xl hover:from-purple-600 hover:to-indigo-700 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {loading ? 'Creating...' : 'Create Server'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Servers Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {projects.map((server) => (
+          <div key={server._id} className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 hover:shadow-lg transition-all duration-300">
+            <div className="flex items-start justify-between mb-4">
+              <div className="flex-1">
+                <h3 className="text-lg font-semibold text-gray-800 mb-2">{server.title}</h3>
+                <p className="text-gray-600 text-sm mb-3">{server.description || 'No description provided'}</p>
+                
+                {/* Server Code */}
+                <div className="bg-gray-50 rounded-lg p-3 mb-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">JOIN CODE</p>
+                      <p className="text-lg font-bold text-gray-800">{server.code}</p>
+                    </div>
+                    <button
+                      onClick={() => copyServerCode(server.code)}
+                      className="p-2 text-gray-500 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors duration-200"
+                      title="Copy code"
+                    >
+                      {copiedCode === server.code ? (
+                        <CheckCircle className="w-5 h-5 text-green-500" />
+                      ) : (
+                        <Copy className="w-5 h-5" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex space-x-2">
+                  <button
+                    onClick={() => copyServerCode(server.code)}
+                    className="flex-1 flex items-center justify-center space-x-2 px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors duration-200"
+                  >
+                    <Code className="w-4 h-4" />
+                    <span className="text-sm">Copy Code</span>
+                  </button>
+                  <a
+                    href={generateWhatsAppMessage(server)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 flex items-center justify-center space-x-2 px-3 py-2 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors duration-200"
+                  >
+                    <Share2 className="w-4 h-4" />
+                    <span className="text-sm">WhatsApp</span>
+                  </a>
+                </div>
+              </div>
+            </div>
+
+            {/* Server Stats */}
+            <div className="grid grid-cols-2 gap-4 pt-4 border-t border-gray-100">
+              <div className="text-center">
+                <p className="text-2xl font-bold text-purple-600">0</p>
+                <p className="text-xs text-gray-500">Teams</p>
+              </div>
+              <div className="text-center">
+                <p className="text-2xl font-bold text-indigo-600">0</p>
+                <p className="text-xs text-gray-500">Students</p>
+              </div>
+            </div>
+
+            {/* Created Date */}
+            <div className="pt-3 border-t border-gray-100 mt-4">
+              <p className="text-xs text-gray-500">
+                Created {new Date(server.createdAt).toLocaleDateString()}
+              </p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {projects.length === 0 && (
+        <div className="bg-white rounded-2xl p-8 text-center shadow-sm border border-gray-100">
+          <Server className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-gray-600 mb-2">No project servers yet</h3>
+          <p className="text-gray-500 mb-6">Create your first project server to get started</p>
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className="px-6 py-3 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-xl hover:from-purple-600 hover:to-indigo-700 transition-all duration-300"
+          >
+            Create Server
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Overview Tab Component
-function OverviewTab({ analytics, projects, notifications, setActiveTab }) {
+function OverviewTab({ analytics, notifications }) {
   const stats = [
     {
-      label: "Total Projects",
+      label: "Total Project Servers",
       value: analytics.totalProjects || 0,
-      icon: BookOpen,
+      icon: Server,
       color: "purple",
       change: "+2 this month"
     },
@@ -274,30 +456,26 @@ function OverviewTab({ analytics, projects, notifications, setActiveTab }) {
       change: "+5% this month"
     },
     {
-      label: "Avg Performance",
-      value: `${analytics.avgPerformance || 0}%`,
-      icon: Award,
+      label: "Pending Reviews",
+      value: analytics.pendingReviews || 0,
+      icon: Clock,
       color: "orange",
-      change: "+3% this week"
+      change: "3 new today"
     }
   ];
 
   return (
     <div className="space-y-6">
       {/* Welcome Section */}
-      <div className="bg-gradient-to-r from-purple-500 to-indigo-600 rounded-2xl p-8 text-white relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full transform translate-x-16 -translate-y-16"></div>
-        <div className="relative">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-3xl font-bold mb-2">Good morning, Professor! 👨‍🏫</h2>
-              <p className="text-purple-100 text-lg">Ready to inspire your students today?</p>
-            </div>
-            <div className="hidden md:block">
-              <div className="w-20 h-20 bg-white/20 rounded-full flex items-center justify-center">
-                <Target className="w-10 h-10 text-white" />
-              </div>
-            </div>
+      <div className="bg-gradient-to-r from-purple-500 to-indigo-600 rounded-2xl p-8 text-white">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-3xl font-bold mb-2">Welcome back, Professor!</h2>
+            <p className="text-purple-100">Here's what's happening with your projects today</p>
+          </div>
+          <div className="text-right">
+            <p className="text-2xl font-bold">{new Date().toLocaleDateString()}</p>
+            <p className="text-purple-100">Today</p>
           </div>
         </div>
       </div>
@@ -306,208 +484,412 @@ function OverviewTab({ analytics, projects, notifications, setActiveTab }) {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {stats.map((stat, index) => {
           const Icon = stat.icon;
-          const colorClasses = {
-            purple: 'bg-purple-100 text-purple-600',
-            blue: 'bg-blue-100 text-blue-600',
-            green: 'bg-green-100 text-green-600',
-            orange: 'bg-orange-100 text-orange-600'
-          };
-          
           return (
-            <div key={index} className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 hover:shadow-lg transition-shadow duration-300">
-              <div className="flex items-center justify-between mb-4">
-                <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${colorClasses[stat.color]}`}>
-                  <Icon className="w-6 h-6" />
+            <div key={index} className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 hover:shadow-lg transition-all duration-300">
+              <div className="flex items-center space-x-4">
+                <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
+                  stat.color === 'purple' ? 'bg-purple-100' :
+                  stat.color === 'blue' ? 'bg-blue-100' :
+                  stat.color === 'green' ? 'bg-green-100' :
+                  'bg-orange-100'
+                }`}>
+                  <Icon className={`w-6 h-6 ${
+                    stat.color === 'purple' ? 'text-purple-600' :
+                    stat.color === 'blue' ? 'text-blue-600' :
+                    stat.color === 'green' ? 'text-green-600' :
+                    'text-orange-600'
+                  }`} />
                 </div>
-                <span className="text-2xl font-bold text-gray-800">{stat.value}</span>
+                <div className="flex-1">
+                  <p className="text-2xl font-bold text-gray-800">{stat.value}</p>
+                  <p className="text-sm text-gray-600">{stat.label}</p>
+                  <p className="text-xs text-green-600 mt-1">{stat.change}</p>
+                </div>
               </div>
-              <h3 className="font-semibold text-gray-800 mb-1">{stat.label}</h3>
-              <p className="text-sm text-green-600">{stat.change}</p>
             </div>
           );
         })}
       </div>
 
-      <div className="grid lg:grid-cols-3 gap-6">
-        {/* Recent Projects */}
-        <div className="lg:col-span-2 bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-lg font-semibold text-gray-800">Recent Projects</h3>
-            <button className="text-purple-600 hover:text-purple-700 text-sm font-medium">View All</button>
-          </div>
-          <div className="space-y-4">
-            {projects.slice(0, 3).map((project) => (
-              <div key={project.id} className="flex items-center space-x-4 p-4 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors duration-200 cursor-pointer">
-                <div className="w-12 h-12 bg-gradient-to-r from-purple-500 to-indigo-600 rounded-xl flex items-center justify-center">
-                  <BookOpen className="w-6 h-6 text-white" />
-                </div>
-                <div className="flex-1">
-                  <h4 className="font-medium text-gray-800">{project.title}</h4>
-                  <p className="text-sm text-gray-600">{project.description}</p>
-                  <div className="flex items-center space-x-4 mt-2">
-                    <div className="flex items-center space-x-1 text-xs text-gray-500">
-                      <Users className="w-3 h-3" />
-                      <span>{project.students} students</span>
-                    </div>
-                    <div className="flex items-center space-x-1 text-xs text-gray-500">
-                      <Target className="w-3 h-3" />
-                      <span>{project.teams} teams</span>
-                    </div>
-                    <span className={`px-2 py-1 rounded text-xs font-medium ${
-                      project.status === 'Active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
-                    }`}>
-                      {project.status}
-                    </span>
-                  </div>
-                </div>
-                <ChevronRight className="w-5 h-5 text-gray-400" />
-              </div>
-            ))}
-          </div>
+      {/* Quick Actions */}
+      <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+        <h3 className="text-lg font-semibold text-gray-800 mb-4">Quick Actions</h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <button className="flex items-center space-x-3 p-4 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors duration-200">
+            <div className="w-10 h-10 bg-purple-100 rounded-xl flex items-center justify-center">
+              <Plus className="w-5 h-5 text-purple-600" />
+            </div>
+            <div className="text-left">
+              <p className="font-medium text-gray-800">Create Project Server</p>
+              <p className="text-sm text-gray-600">Start a new project</p>
+            </div>
+          </button>
+          <button className="flex items-center space-x-3 p-4 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors duration-200">
+            <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center">
+              <Users className="w-5 h-5 text-blue-600" />
+            </div>
+            <div className="text-left">
+              <p className="font-medium text-gray-800">Manage Teams</p>
+              <p className="text-sm text-gray-600">View all teams</p>
+            </div>
+          </button>
+          <button className="flex items-center space-x-3 p-4 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors duration-200">
+            <div className="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center">
+              <FileText className="w-5 h-5 text-green-600" />
+            </div>
+            <div className="text-left">
+              <p className="font-medium text-gray-800">Review Submissions</p>
+              <p className="text-sm text-gray-600">Check pending work</p>
+            </div>
+          </button>
         </div>
+      </div>
 
-        {/* Recent Activity & Quick Actions */}
-        <div className="space-y-6">
-          {/* Quick Actions */}
-          <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-            <h3 className="text-lg font-semibold text-gray-800 mb-6">Quick Actions</h3>
-            <div className="space-y-3">
-              <button 
-                onClick={() => setActiveTab('projects')}
-                className="w-full flex items-center space-x-3 p-3 text-left bg-purple-50 hover:bg-purple-100 rounded-xl transition-colors duration-200"
-              >
-                <div className="w-8 h-8 bg-purple-500 rounded-lg flex items-center justify-center">
-                  <Plus className="w-4 h-4 text-white" />
-                </div>
-                <span className="font-medium text-purple-700">Create New Project</span>
-              </button>
-              <button 
-                onClick={() => setActiveTab('students')}
-                className="w-full flex items-center space-x-3 p-3 text-left hover:bg-gray-50 rounded-xl transition-colors duration-200"
-              >
-                <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center">
-                  <Users className="w-4 h-4 text-white" />
-                </div>
-                <span className="font-medium text-gray-700">Manage Students</span>
-              </button>
-              <button 
-                onClick={() => setActiveTab('analytics')}
-                className="w-full flex items-center space-x-3 p-3 text-left hover:bg-gray-50 rounded-xl transition-colors duration-200"
-              >
-                <div className="w-8 h-8 bg-green-500 rounded-lg flex items-center justify-center">
-                  <BarChart3 className="w-4 h-4 text-white" />
-                </div>
-                <span className="font-medium text-gray-700">View Analytics</span>
-              </button>
-              <button className="w-full flex items-center space-x-3 p-3 text-left hover:bg-gray-50 rounded-xl transition-colors duration-200">
-                <div className="w-8 h-8 bg-orange-500 rounded-lg flex items-center justify-center">
-                  <Download className="w-4 h-4 text-white" />
-                </div>
-                <span className="font-medium text-gray-700">Export Reports</span>
-              </button>
+      {/* Recent Notifications */}
+      <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-gray-800">Recent Activity</h3>
+          <button className="text-sm text-purple-600 hover:text-purple-700">View all</button>
+        </div>
+        <div className="space-y-4">
+          {notifications.slice(0, 5).map((notification) => (
+            <div key={notification.id} className="flex items-start space-x-4 p-3 rounded-xl hover:bg-gray-50 transition-colors duration-200">
+              <div className={`w-2 h-2 rounded-full mt-2 ${notification.unread ? 'bg-purple-500' : 'bg-gray-300'}`}></div>
+              <div className="flex-1">
+                <p className="text-sm font-medium text-gray-800">{notification.title}</p>
+                <p className="text-xs text-gray-600">{notification.message}</p>
+                <p className="text-xs text-gray-400 mt-1">{notification.time}</p>
+              </div>
             </div>
-          </div>
-
-          {/* Recent Activity */}
-          <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-            <h3 className="text-lg font-semibold text-gray-800 mb-6">Recent Activity</h3>
-            <div className="space-y-4">
-              {notifications.slice(0, 4).map((notification) => (
-                <div key={notification.id} className="flex items-start space-x-3">
-                  <div className={`w-2 h-2 rounded-full mt-2 ${notification.unread ? 'bg-purple-500' : 'bg-gray-300'}`}></div>
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-gray-800">{notification.title}</p>
-                    <p className="text-xs text-gray-600">{notification.message}</p>
-                    <p className="text-xs text-gray-400 mt-1">{notification.time}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
+          ))}
         </div>
       </div>
     </div>
   );
 }
 
-// Projects Tab Component
-function ProjectsTab({ projects, setProjects }) {
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [newProject, setNewProject] = useState({ title: '', description: '' });
-  const [loading, setLoading] = useState(false);
+// Teams Tab Component
+function TeamsTab() {
+  const [teams, setTeams] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  const createProject = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    
-    try {
-      const response = await fetch(`${API_BASE}/projectServers/createProjectServer`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(newProject)
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setProjects(prev => [...prev, data.projectServer]);
-        setNewProject({ title: '', description: '' });
-        setShowCreateModal(false);
-      }
-    } catch (error) {
-      console.error('Failed to create project:', error);
-    } finally {
+  useEffect(() => {
+    // Mock data - replace with actual API call
+    setTimeout(() => {
+      setTeams([
+        { id: 1, name: "Team Alpha", members: 4, project: "Web Development", status: "Active", progress: 75 },
+        { id: 2, name: "Team Beta", members: 3, project: "Mobile App", status: "Active", progress: 60 },
+        { id: 3, name: "Team Gamma", members: 5, project: "Data Science", status: "Completed", progress: 100 },
+      ]);
       setLoading(false);
-    }
-  };
+    }, 1000);
+  }, []);
 
-  const copyProjectCode = (code) => {
-    navigator.clipboard.writeText(code);
-    // Add toast notification here if needed
-  };
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-gray-800">Projects</h2>
-          <p className="text-gray-600">Manage your project servers and monitor progress</p>
+          <h2 className="text-2xl font-bold text-gray-800">Teams</h2>
+          <p className="text-gray-600">Manage and monitor team progress</p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {teams.map((team) => (
+          <div key={team.id} className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 hover:shadow-lg transition-all duration-300">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-800">{team.name}</h3>
+              <span className={`px-2 py-1 rounded-lg text-xs font-medium ${
+                team.status === 'Active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+              }`}>
+                {team.status}
+              </span>
+            </div>
+            <p className="text-gray-600 mb-3">{team.project}</p>
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-sm text-gray-600">{team.members} members</span>
+              <span className="text-sm font-medium text-gray-800">{team.progress}%</span>
+            </div>
+            <div className="w-full bg-gray-200 rounded-full h-2">
+              <div 
+                className="bg-gradient-to-r from-purple-500 to-indigo-600 h-2 rounded-full transition-all duration-300"
+                style={{ width: `${team.progress}%` }}
+              ></div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Tasks Tab Component
+function TasksTab() {
+  const [tasks, setTasks] = useState([]);
+  const [teams, setTeams] = useState([]);
+  const [servers, setServers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [newTask, setNewTask] = useState({
+    title: '',
+    description: '',
+    assignmentType: 'specific',
+    teamId: '',
+    projectServerCode: '',
+    priority: 'medium',
+    dueDate: ''
+  });
+  const [createLoading, setCreateLoading] = useState(false);
+
+  useEffect(() => {
+    loadTasksAndTeams();
+  }, []);
+
+  const loadTasksAndTeams = async () => {
+    try {
+      setLoading(true);
+      
+      // Mock data - replace with actual API calls
+      setTeams([
+        { _id: 1, name: "Team Alpha", projectServer: "WEB001", members: [1, 2, 3] },
+        { _id: 2, name: "Team Beta", projectServer: "MOB001", members: [4, 5] },
+      ]);
+      
+      setServers([
+        { _id: 1, title: "Web Development Course", code: "WEB001" },
+        { _id: 2, title: "Mobile App Development", code: "MOB001" },
+      ]);
+      
+      setTasks([
+        { id: 1, title: "Design Homepage", team: "Team Alpha", status: "In Progress", priority: "High", dueDate: "2024-02-15" },
+        { id: 2, title: "Database Schema", team: "Team Beta", status: "Pending", priority: "Medium", dueDate: "2024-02-20" },
+        { id: 3, title: "User Authentication", team: "Team Alpha", status: "Completed", priority: "High", dueDate: "2024-02-10" },
+      ]);
+    } catch (error) {
+      console.error('Failed to load tasks and teams:', error);
+      setTeams([]);
+      setServers([]);
+      setTasks([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCreateTask = async (e) => {
+    e.preventDefault();
+    if (!newTask.title.trim()) return;
+    
+    if (newTask.assignmentType === 'specific' && !newTask.teamId) {
+      alert('Please select a team');
+      return;
+    }
+    
+    if (newTask.assignmentType === 'all' && !newTask.projectServerCode) {
+      alert('Please select a project server');
+      return;
+    }
+
+    setCreateLoading(true);
+    
+    try {
+      const mockTask = {
+        id: Date.now(),
+        title: newTask.title.trim(),
+        description: newTask.description.trim(),
+        team: newTask.assignmentType === 'specific' ? 
+          teams.find(t => t._id.toString() === newTask.teamId)?.name : 
+          'All Teams',
+        status: 'Pending',
+        priority: newTask.priority,
+        dueDate: newTask.dueDate || null
+      };
+      
+      setTasks(prev => [mockTask, ...prev]);
+      setNewTask({
+        title: '',
+        description: '',
+        assignmentType: 'specific',
+        teamId: '',
+        projectServerCode: '',
+        priority: 'medium',
+        dueDate: ''
+      });
+      setShowCreateModal(false);
+      alert('Task created successfully!');
+    } catch (error) {
+      console.error('Failed to create task:', error);
+      alert('Failed to create task');
+    } finally {
+      setCreateLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500"></div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-800">Tasks</h2>
+          <p className="text-gray-600">Create and manage tasks for teams</p>
         </div>
         <button
           onClick={() => setShowCreateModal(true)}
-          className="flex items-center space-x-2 bg-gradient-to-r from-purple-500 to-indigo-600 text-white px-4 py-2 rounded-xl hover:from-purple-600 hover:to-indigo-700 transition-all duration-300 transform hover:scale-105"
+          className="flex items-center space-x-2 bg-gradient-to-r from-purple-500 to-indigo-600 text-white px-6 py-3 rounded-xl hover:from-purple-600 hover:to-indigo-700 transition-all duration-300"
         >
           <Plus className="w-5 h-5" />
-          <span>New Project</span>
+          <span>Create Task</span>
         </button>
       </div>
 
-      {/* Create Project Modal */}
+      {/* Create Task Modal */}
       {showCreateModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-md mx-4">
-            <h3 className="text-xl font-bold text-gray-800 mb-4">Create New Project</h3>
-            <form onSubmit={createProject} className="space-y-4">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 overflow-y-auto">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md mx-4 my-8 max-h-[90vh] overflow-y-auto">
+            <h3 className="text-xl font-bold text-gray-800 mb-4">Create New Task</h3>
+            <form onSubmit={handleCreateTask} className="space-y-4">
               <div>
-                <label className="block text-gray-700 font-medium mb-2">Project Title</label>
+                <label className="block text-gray-700 font-medium mb-2">Task Title *</label>
                 <input
                   type="text"
-                  value={newProject.title}
-                  onChange={(e) => setNewProject({ ...newProject, title: e.target.value })}
+                  value={newTask.title}
+                  onChange={(e) => setNewTask(prev => ({ ...prev, title: e.target.value }))}
                   className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-purple-100 focus:border-purple-400"
-                  placeholder="Enter project title"
+                  placeholder="e.g., Design homepage layout"
                   required
                 />
               </div>
+              
               <div>
                 <label className="block text-gray-700 font-medium mb-2">Description</label>
                 <textarea
-                  value={newProject.description}
-                  onChange={(e) => setNewProject({ ...newProject, description: e.target.value })}
+                  value={newTask.description}
+                  onChange={(e) => setNewTask(prev => ({ ...prev, description: e.target.value }))}
                   className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-purple-100 focus:border-purple-400 h-24 resize-none"
-                  placeholder="Describe your project"
+                  placeholder="Describe the task requirements..."
                 />
               </div>
+
+              <div>
+                <label className="block text-gray-700 font-medium mb-2">Assignment Type *</label>
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="flex items-center space-x-2 p-3 border border-gray-200 rounded-xl cursor-pointer hover:bg-gray-50">
+                    <input
+                      type="radio"
+                      name="assignmentType"
+                      value="specific"
+                      checked={newTask.assignmentType === 'specific'}
+                      onChange={(e) => setNewTask(prev => ({ ...prev, assignmentType: e.target.value, teamId: '', projectServerCode: '' }))}
+                      className="text-purple-600"
+                    />
+                    <span className="text-sm font-medium text-gray-700">Specific Team</span>
+                  </label>
+                  <label className="flex items-center space-x-2 p-3 border border-gray-200 rounded-xl cursor-pointer hover:bg-gray-50">
+                    <input
+                      type="radio"
+                      name="assignmentType"
+                      value="all"
+                      checked={newTask.assignmentType === 'all'}
+                      onChange={(e) => setNewTask(prev => ({ ...prev, assignmentType: e.target.value, teamId: '', projectServerCode: '' }))}
+                      className="text-purple-600"
+                    />
+                    <span className="text-sm font-medium text-gray-700">All Teams</span>
+                  </label>
+                </div>
+              </div>
+
+              {newTask.assignmentType === 'specific' && (
+                <div>
+                  <label className="block text-gray-700 font-medium mb-2">Select Team *</label>
+                  <select
+                    value={newTask.teamId}
+                    onChange={(e) => setNewTask(prev => ({ ...prev, teamId: e.target.value }))}
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-purple-100 focus:border-purple-400"
+                    required
+                  >
+                    <option value="">Choose a team</option>
+                    {teams.length === 0 ? (
+                      <option value="" disabled>No teams available</option>
+                    ) : (
+                      teams.map((team) => (
+                        <option key={team._id} value={team._id}>
+                          {team.name} ({team.projectServer}) - {team.members?.length || 0} members
+                        </option>
+                      ))
+                    )}
+                  </select>
+                  {teams.length === 0 && (
+                    <p className="text-sm text-orange-600 mt-1">
+                      No teams found. Students need to join your project servers and create teams first.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {newTask.assignmentType === 'all' && (
+                <div>
+                  <label className="block text-gray-700 font-medium mb-2">Select Project Server *</label>
+                  <select
+                    value={newTask.projectServerCode}
+                    onChange={(e) => setNewTask(prev => ({ ...prev, projectServerCode: e.target.value }))}
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-purple-100 focus:border-purple-400"
+                    required
+                  >
+                    <option value="">Choose a project server</option>
+                    {servers.length === 0 ? (
+                      <option value="" disabled>No project servers available</option>
+                    ) : (
+                      servers.map((server) => (
+                        <option key={server._id} value={server.code}>
+                          {server.title} ({server.code})
+                        </option>
+                      ))
+                    )}
+                  </select>
+                  <p className="text-sm text-blue-600 mt-1">
+                    This will create the task for all teams in the selected project server.
+                  </p>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-gray-700 font-medium mb-2">Priority</label>
+                <select
+                  value={newTask.priority}
+                  onChange={(e) => setNewTask(prev => ({ ...prev, priority: e.target.value }))}
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-purple-100 focus:border-purple-400"
+                >
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-gray-700 font-medium mb-2">Due Date</label>
+                <input
+                  type="date"
+                  value={newTask.dueDate}
+                  onChange={(e) => setNewTask(prev => ({ ...prev, dueDate: e.target.value }))}
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-purple-100 focus:border-purple-400"
+                  min={new Date().toISOString().split('T')[0]}
+                />
+              </div>
+
               <div className="flex space-x-3">
                 <button
                   type="button"
@@ -516,12 +898,14 @@ function ProjectsTab({ projects, setProjects }) {
                 >
                   Cancel
                 </button>
-                <button
+                <button 
                   type="submit"
-                  disabled={loading}
-                  className="flex-1 px-4 py-3 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-xl hover:from-purple-600 hover:to-indigo-700 transition-all duration-300 disabled:opacity-50"
+                  disabled={createLoading || !newTask.title.trim() || 
+                    (newTask.assignmentType === 'specific' && !newTask.teamId) || 
+                    (newTask.assignmentType === 'all' && !newTask.projectServerCode)}
+                  className="flex-1 px-4 py-3 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-xl hover:from-purple-600 hover:to-indigo-700 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {loading ? 'Creating...' : 'Create'}
+                  {createLoading ? 'Creating...' : 'Create Task'}
                 </button>
               </div>
             </form>
@@ -529,114 +913,98 @@ function ProjectsTab({ projects, setProjects }) {
         </div>
       )}
 
-      {/* Projects Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {projects.map((project) => (
-          <div key={project.id} className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 hover:shadow-lg transition-all duration-300 transform hover:scale-105">
-            <div className="flex items-start justify-between mb-4">
-              <div className="w-12 h-12 bg-gradient-to-r from-purple-500 to-indigo-600 rounded-xl flex items-center justify-center">
-                <BookOpen className="w-6 h-6 text-white" />
-              </div>
-              <div className="flex items-center space-x-2">
-                <button
-                  onClick={() => copyProjectCode(project.code)}
-                  className="p-1 text-gray-400 hover:text-purple-600 transition-colors duration-200"
-                  title="Copy project code"
-                >
-                  <Copy className="w-4 h-4" />
-                </button>
-                <button className="p-1 text-gray-400 hover:text-blue-600 transition-colors duration-200" title="View details">
-                  <Eye className="w-4 h-4" />
-                </button>
-                <button className="p-1 text-gray-400 hover:text-green-600 transition-colors duration-200" title="Edit project">
-                  <Edit className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-            
-            <h3 className="font-semibold text-gray-800 mb-2">{project.title}</h3>
-            <p className="text-gray-600 text-sm mb-4">{project.description}</p>
-            
-            {/* Progress Bar */}
-            <div className="mb-4">
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-xs text-gray-500">Progress</span>
-                <span className="text-xs text-gray-500">{project.progress}%</span>
-              </div>
-              <div className="w-full bg-gray-200 rounded-full h-2">
-                <div 
-                  className="bg-gradient-to-r from-purple-500 to-indigo-600 h-2 rounded-full transition-all duration-300" 
-                  style={{ width: `${project.progress}%` }}
-                ></div>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center space-x-4">
-                <div className="flex items-center space-x-1 text-xs text-gray-500">
-                  <Users className="w-3 h-3" />
-                  <span>{project.students} students</span>
-                </div>
-                <div className="flex items-center space-x-1 text-xs text-gray-500">
-                  <Target className="w-3 h-3" />
-                  <span>{project.teams} teams</span>
-                </div>
-              </div>
-              <span className={`px-2 py-1 rounded-lg text-xs font-medium ${
-                project.status === 'Active' ? 'bg-green-100 text-green-800' : 
-                project.status === 'Completed' ? 'bg-blue-100 text-blue-800' :
-                'bg-gray-100 text-gray-800'
-              }`}>
-                {project.status}
-              </span>
-            </div>
-
-            <div className="bg-gray-100 px-3 py-2 rounded-lg flex items-center justify-between">
-              <span className="text-xs font-mono text-gray-600">{project.code}</span>
-              <button
-                onClick={() => copyProjectCode(project.code)}
-                className="text-xs text-purple-600 hover:text-purple-700 font-medium"
-              >
-                Copy Code
-              </button>
-            </div>
-          </div>
-        ))}
-        
-        {/* Empty state */}
-        {projects.length === 0 && (
-          <div className="col-span-full flex flex-col items-center justify-center py-12">
-            <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mb-4">
-              <BookOpen className="w-8 h-8 text-gray-400" />
-            </div>
-            <h3 className="text-lg font-medium text-gray-600 mb-2">No projects yet</h3>
-            <p className="text-gray-500 text-center mb-4">Create your first project to get started</p>
-            <button
-              onClick={() => setShowCreateModal(true)}
-              className="flex items-center space-x-2 bg-gradient-to-r from-purple-500 to-indigo-600 text-white px-4 py-2 rounded-xl hover:from-purple-600 hover:to-indigo-700 transition-all duration-300"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Create Project</span>
-            </button>
-          </div>
-        )}
+      {/* Tasks Table */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="text-left py-4 px-6 font-medium text-gray-700">Task</th>
+                <th className="text-left py-4 px-6 font-medium text-gray-700">Team</th>
+                <th className="text-left py-4 px-6 font-medium text-gray-700">Status</th>
+                <th className="text-left py-4 px-6 font-medium text-gray-700">Priority</th>
+                <th className="text-left py-4 px-6 font-medium text-gray-700">Due Date</th>
+                <th className="text-left py-4 px-6 font-medium text-gray-700">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tasks.map((task) => (
+                <tr key={task.id || task._id} className="border-t border-gray-100 hover:bg-gray-50">
+                  <td className="py-4 px-6">
+                    <div>
+                      <p className="font-medium text-gray-800">{task.title}</p>
+                      {task.description && (
+                        <p className="text-sm text-gray-600 mt-1">{task.description}</p>
+                      )}
+                    </div>
+                  </td>
+                  <td className="py-4 px-6">
+                    <span className="text-gray-600">{task.team?.name || task.team}</span>
+                  </td>
+                  <td className="py-4 px-6">
+                    <span className={`px-2 py-1 rounded-lg text-xs font-medium ${
+                      task.status === 'Completed' || task.status === 'approved' ? 'bg-green-100 text-green-800' :
+                      task.status === 'In Progress' || task.status === 'in-progress' ? 'bg-blue-100 text-blue-800' :
+                      task.status === 'submitted' ? 'bg-yellow-100 text-yellow-800' :
+                      'bg-gray-100 text-gray-800'
+                    }`}>
+                      {task.status}
+                    </span>
+                  </td>
+                  <td className="py-4 px-6">
+                    <span className={`px-2 py-1 rounded-lg text-xs font-medium ${
+                      task.priority === 'High' || task.priority === 'high' ? 'bg-red-100 text-red-800' :
+                      task.priority === 'Medium' || task.priority === 'medium' ? 'bg-yellow-100 text-yellow-800' :
+                      'bg-gray-100 text-gray-800'
+                    }`}>
+                      {task.priority}
+                    </span>
+                  </td>
+                  <td className="py-4 px-6">
+                    <span className="text-gray-600">
+                      {task.dueDate ? new Date(task.dueDate).toLocaleDateString() : 'No due date'}
+                    </span>
+                  </td>
+                  <td className="py-4 px-6">
+                    <div className="flex items-center space-x-2">
+                      <button className="p-1 text-gray-400 hover:text-blue-600 transition-colors duration-200" title="View details">
+                        <Eye className="w-4 h-4" />
+                      </button>
+                      <button className="p-1 text-gray-400 hover:text-green-600 transition-colors duration-200" title="Edit task">
+                        <Edit className="w-4 h-4" />
+                      </button>
+                      <button className="p-1 text-gray-400 hover:text-red-600 transition-colors duration-200" title="Delete task">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
+
+      {/* Empty State */}
+      {tasks.length === 0 && (
+        <div className="bg-white rounded-2xl p-8 text-center shadow-sm border border-gray-100">
+          <FileText className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-gray-600 mb-2">No tasks yet</h3>
+          <p className="text-gray-500 mb-6">Create your first task to get teams started</p>
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className="px-6 py-3 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-xl hover:from-purple-600 hover:to-indigo-700 transition-all duration-300"
+          >
+            Create Task
+          </button>
+        </div>
+      )}
     </div>
   );
 }
 
 // Students Tab Component
 function StudentsTab({ students }) {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterStatus, setFilterStatus] = useState('all');
-
-  const filteredStudents = students.filter(student => {
-    const matchesSearch = student.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         student.email.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesFilter = filterStatus === 'all' || student.status.toLowerCase() === filterStatus;
-    return matchesSearch && matchesFilter;
-  });
-
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -644,44 +1012,8 @@ function StudentsTab({ students }) {
           <h2 className="text-2xl font-bold text-gray-800">Students</h2>
           <p className="text-gray-600">Monitor student progress and performance</p>
         </div>
-        <div className="flex items-center space-x-3">
-          <button className="flex items-center space-x-2 border border-gray-200 text-gray-600 px-4 py-2 rounded-xl hover:bg-gray-50 transition-colors duration-200">
-            <Filter className="w-4 h-4" />
-            <span>Filter</span>
-          </button>
-          <button className="flex items-center space-x-2 bg-gradient-to-r from-purple-500 to-indigo-600 text-white px-4 py-2 rounded-xl hover:from-purple-600 hover:to-indigo-700 transition-all duration-300">
-            <Download className="w-4 h-4" />
-            <span>Export</span>
-          </button>
-        </div>
       </div>
 
-      {/* Search and Filter */}
-      <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-        <div className="flex items-center space-x-4">
-          <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-            <input
-              type="text"
-              placeholder="Search students..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-100 focus:border-purple-400"
-            />
-          </div>
-          <select
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
-            className="px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-100 focus:border-purple-400"
-          >
-            <option value="all">All Students</option>
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
-          </select>
-        </div>
-      </div>
-
-      {/* Students Table */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
@@ -696,15 +1028,13 @@ function StudentsTab({ students }) {
                 <th className="text-left py-4 px-6 font-medium text-gray-700">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
-              {filteredStudents.map((student) => (
-                <tr key={student.id} className="hover:bg-gray-50 transition-colors duration-200">
+            <tbody>
+              {students.map((student) => (
+                <tr key={student.id} className="border-t border-gray-100 hover:bg-gray-50">
                   <td className="py-4 px-6">
                     <div className="flex items-center space-x-3">
-                      <div className="w-10 h-10 bg-gradient-to-r from-purple-500 to-indigo-600 rounded-full flex items-center justify-center">
-                        <span className="text-white font-medium text-sm">
-                          {student.name.split(' ').map(n => n[0]).join('')}
-                        </span>
+                      <div className="w-8 h-8 bg-gradient-to-r from-purple-500 to-indigo-600 rounded-full flex items-center justify-center text-white text-sm font-medium">
+                        {student.name.split(' ').map(n => n[0]).join('')}
                       </div>
                       <div>
                         <p className="font-medium text-gray-800">{student.name}</p>
@@ -713,14 +1043,10 @@ function StudentsTab({ students }) {
                     </div>
                   </td>
                   <td className="py-4 px-6">
-                    <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded-lg text-sm font-medium">
-                      {student.teams}
-                    </span>
+                    <span className="text-gray-600">{student.teams}</span>
                   </td>
                   <td className="py-4 px-6">
-                    <span className="bg-purple-100 text-purple-800 px-2 py-1 rounded-lg text-sm font-medium">
-                      {student.projects}
-                    </span>
+                    <span className="text-gray-600">{student.projects}</span>
                   </td>
                   <td className="py-4 px-6">
                     <div className="flex items-center space-x-2">
@@ -749,13 +1075,13 @@ function StudentsTab({ students }) {
                   </td>
                   <td className="py-4 px-6">
                     <div className="flex items-center space-x-2">
-                      <button className="p-1 text-gray-400 hover:text-blue-600 transition-colors duration-200" title="View profile">
+                      <button className="p-1 text-gray-400 hover:text-blue-600 transition-colors duration-200">
                         <Eye className="w-4 h-4" />
                       </button>
-                      <button className="p-1 text-gray-400 hover:text-purple-600 transition-colors duration-200" title="Send message">
+                      <button className="p-1 text-gray-400 hover:text-purple-600 transition-colors duration-200">
                         <MessageSquare className="w-4 h-4" />
                       </button>
-                      <button className="p-1 text-gray-400 hover:text-green-600 transition-colors duration-200" title="Edit student">
+                      <button className="p-1 text-gray-400 hover:text-green-600 transition-colors duration-200">
                         <Edit className="w-4 h-4" />
                       </button>
                     </div>
@@ -771,7 +1097,7 @@ function StudentsTab({ students }) {
 }
 
 // Analytics Tab Component
-function AnalyticsTab({ analytics, projects }) {
+function AnalyticsTab({ analytics }) {
   return (
     <div className="space-y-6">
       <div>
@@ -779,45 +1105,29 @@ function AnalyticsTab({ analytics, projects }) {
         <p className="text-gray-600">Detailed insights into project performance and student engagement</p>
       </div>
 
-      {/* Analytics Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
           <div className="flex items-center space-x-3 mb-4">
             <div className="w-10 h-10 bg-purple-100 rounded-xl flex items-center justify-center">
-              <BarChart3 className="w-5 h-5 text-purple-600" />
+              <Target className="w-5 h-5 text-purple-600" />
             </div>
             <div>
-              <p className="text-sm text-gray-600">Total Teams</p>
-              <p className="text-2xl font-bold text-gray-800">{analytics.totalTeams}</p>
+              <p className="text-2xl font-bold text-gray-800">{analytics.totalProjects}</p>
+              <p className="text-sm text-gray-600">Total Projects</p>
             </div>
           </div>
-          <p className="text-xs text-green-600">+12% from last month</p>
         </div>
 
         <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
           <div className="flex items-center space-x-3 mb-4">
             <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center">
-              <FileText className="w-5 h-5 text-blue-600" />
+              <Users className="w-5 h-5 text-blue-600" />
             </div>
             <div>
-              <p className="text-sm text-gray-600">Submissions</p>
-              <p className="text-2xl font-bold text-gray-800">{analytics.thisMonthSubmissions}</p>
+              <p className="text-2xl font-bold text-gray-800">{analytics.totalStudents}</p>
+              <p className="text-sm text-gray-600">Active Students</p>
             </div>
           </div>
-          <p className="text-xs text-green-600">This month</p>
-        </div>
-
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-          <div className="flex items-center space-x-3 mb-4">
-            <div className="w-10 h-10 bg-orange-100 rounded-xl flex items-center justify-center">
-              <Clock className="w-5 h-5 text-orange-600" />
-            </div>
-            <div>
-              <p className="text-sm text-gray-600">Pending Reviews</p>
-              <p className="text-2xl font-bold text-gray-800">{analytics.pendingReviews}</p>
-            </div>
-          </div>
-          <p className="text-xs text-orange-600">Needs attention</p>
         </div>
 
         <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
@@ -826,42 +1136,20 @@ function AnalyticsTab({ analytics, projects }) {
               <TrendingUp className="w-5 h-5 text-green-600" />
             </div>
             <div>
-              <p className="text-sm text-gray-600">Avg Score</p>
-              <p className="text-2xl font-bold text-gray-800">{analytics.avgPerformance}%</p>
+              <p className="text-2xl font-bold text-gray-800">{analytics.completionRate}%</p>
+              <p className="text-sm text-gray-600">Completion Rate</p>
             </div>
           </div>
-          <p className="text-xs text-green-600">+2.3% improvement</p>
-        </div>
-      </div>
-
-      {/* Charts */}
-      <div className="grid lg:grid-cols-2 gap-6">
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-          <h3 className="text-lg font-semibold text-gray-800 mb-4">Project Progress Overview</h3>
-          <div className="space-y-4">
-            {projects.map((project) => (
-              <div key={project.id} className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium text-gray-700">{project.title}</span>
-                  <span className="text-sm text-gray-500">{project.progress}%</span>
-                </div>
-                <div className="w-full bg-gray-200 rounded-full h-2">
-                  <div 
-                    className="bg-gradient-to-r from-purple-500 to-indigo-600 h-2 rounded-full transition-all duration-300" 
-                    style={{ width: `${project.progress}%` }}
-                  ></div>
-                </div>
-              </div>
-            ))}
-          </div>
         </div>
 
         <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-          <h3 className="text-lg font-semibold text-gray-800 mb-4">Student Engagement</h3>
-          <div className="flex items-center justify-center h-48">
-            <div className="text-center">
-              <BarChart3 className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-500">Advanced charts coming soon</p>
+          <div className="flex items-center space-x-3 mb-4">
+            <div className="w-10 h-10 bg-orange-100 rounded-xl flex items-center justify-center">
+              <Clock className="w-5 h-5 text-orange-600" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-gray-800">{analytics.pendingReviews}</p>
+              <p className="text-sm text-gray-600">Pending Reviews</p>
             </div>
           </div>
         </div>
@@ -870,139 +1158,27 @@ function AnalyticsTab({ analytics, projects }) {
   );
 }
 
-// Assignments Tab Component
-function AssignmentsTab() {
-  const assignments = [
-    {
-      id: 1,
-      title: "Web Development Project Phase 1",
-      project: "Web Development Bootcamp",
-      dueDate: "2024-02-25",
-      submissions: 25,
-      totalStudents: 32,
-      status: "Active"
-    },
-    {
-      id: 2,
-      title: "AI Model Training Report",
-      project: "AI & Machine Learning",
-      dueDate: "2024-03-05",
-      submissions: 12,
-      totalStudents: 20,
-      status: "Active"
-    },
-    {
-      id: 3,
-      title: "Mobile App Prototype",
-      project: "Mobile App Development",
-      dueDate: "2024-01-30",
-      submissions: 24,
-      totalStudents: 24,
-      status: "Completed"
-    }
-  ];
-
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-800">Assignments</h2>
-          <p className="text-gray-600">Create and manage assignments for your projects</p>
-        </div>
-        <button className="flex items-center space-x-2 bg-gradient-to-r from-purple-500 to-indigo-600 text-white px-4 py-2 rounded-xl hover:from-purple-600 hover:to-indigo-700 transition-all duration-300">
-          <Plus className="w-4 h-4" />
-          <span>New Assignment</span>
-        </button>
-      </div>
-
-      <div className="grid gap-4">
-        {assignments.map((assignment) => (
-          <div key={assignment.id} className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 hover:shadow-lg transition-shadow duration-300">
-            <div className="flex items-center justify-between">
-              <div className="flex-1">
-                <div className="flex items-center space-x-3 mb-2">
-                  <h3 className="font-semibold text-gray-800">{assignment.title}</h3>
-                  <span className={`px-2 py-1 rounded-lg text-xs font-medium ${
-                    assignment.status === 'Completed' ? 'bg-green-100 text-green-800' :
-                    'bg-blue-100 text-blue-800'
-                  }`}>
-                    {assignment.status}
-                  </span>
-                </div>
-                <p className="text-gray-600 text-sm mb-2">{assignment.project}</p>
-                <div className="flex items-center space-x-4 text-sm text-gray-500">
-                  <span>Due: {assignment.dueDate}</span>
-                  <span>Submissions: {assignment.submissions}/{assignment.totalStudents}</span>
-                </div>
-              </div>
-              <div className="flex items-center space-x-3">
-                <div className="text-right">
-                  <p className="text-sm font-medium text-gray-700">
-                    {Math.round((assignment.submissions / assignment.totalStudents) * 100)}%
-                  </p>
-                  <p className="text-xs text-gray-500">Completion</p>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <button className="p-2 text-gray-400 hover:text-blue-600 transition-colors duration-200" title="View submissions">
-                    <Eye className="w-4 h-4" />
-                  </button>
-                  <button className="p-2 text-gray-400 hover:text-green-600 transition-colors duration-200" title="Edit assignment">
-                    <Edit className="w-4 h-4" />
-                  </button>
-                  <ChevronRight className="w-5 h-5 text-gray-400" />
-                </div>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// Calendar Tab Component
+// Other placeholder components
 function CalendarTab() {
   return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold text-gray-800">Calendar</h2>
-        <p className="text-gray-600">Schedule and manage important dates</p>
-      </div>
-      
-      <div className="bg-white rounded-2xl p-8 text-center shadow-sm border border-gray-100">
-        <Calendar className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-        <h3 className="text-lg font-medium text-gray-600 mb-2">Calendar Integration</h3>
-        <p className="text-gray-500 mb-4">Full calendar functionality coming soon</p>
-        <button className="bg-gradient-to-r from-purple-500 to-indigo-600 text-white px-6 py-3 rounded-xl hover:from-purple-600 hover:to-indigo-700 transition-all duration-300">
-          Enable Calendar
-        </button>
-      </div>
+    <div className="bg-white rounded-2xl p-8 text-center shadow-sm border border-gray-100">
+      <Calendar className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+      <h3 className="text-lg font-medium text-gray-600 mb-2">Calendar Integration</h3>
+      <p className="text-gray-500">Coming soon - Full calendar integration</p>
     </div>
   );
 }
 
-// Messages Tab Component
 function MessagesTab() {
   return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold text-gray-800">Messages</h2>
-        <p className="text-gray-600">Communicate with students and teams</p>
-      </div>
-      
-      <div className="bg-white rounded-2xl p-8 text-center shadow-sm border border-gray-100">
-        <MessageSquare className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-        <h3 className="text-lg font-medium text-gray-600 mb-2">Messaging System</h3>
-        <p className="text-gray-500 mb-4">Direct messaging with students coming soon</p>
-        <button className="bg-gradient-to-r from-purple-500 to-indigo-600 text-white px-6 py-3 rounded-xl hover:from-purple-600 hover:to-indigo-700 transition-all duration-300">
-          Start Messaging
-        </button>
-      </div>
+    <div className="bg-white rounded-2xl p-8 text-center shadow-sm border border-gray-100">
+      <MessageSquare className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+      <h3 className="text-lg font-medium text-gray-600 mb-2">No messages yet</h3>
+      <p className="text-gray-500">Start communicating with your students</p>
     </div>
   );
 }
 
-// Settings Tab Component
 function SettingsTab() {
   return (
     <div className="space-y-6">
@@ -1011,99 +1187,17 @@ function SettingsTab() {
         <p className="text-gray-600">Manage your account and preferences</p>
       </div>
 
-      <div className="grid gap-6">
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-          <h3 className="text-lg font-semibold text-gray-800 mb-4">Profile Settings</h3>
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-gray-700 font-medium mb-2">First Name</label>
-                <input
-                  type="text"
-                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-purple-100 focus:border-purple-400"
-                  placeholder="Your first name"
-                />
-              </div>
-              <div>
-                <label className="block text-gray-700 font-medium mb-2">Last Name</label>
-                <input
-                  type="text"
-                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-purple-100 focus:border-purple-400"
-                  placeholder="Your last name"
-                />
-              </div>
-            </div>
-            <div>
-              <label className="block text-gray-700 font-medium mb-2">Email</label>
-              <input
-                type="email"
-                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-purple-100 focus:border-purple-400"
-                placeholder="Your email address"
-              />
-            </div>
-            <div>
-              <label className="block text-gray-700 font-medium mb-2">Phone</label>
-              <input
-                type="tel"
-                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-purple-100 focus:border-purple-400"
-                placeholder="Your phone number"
-              />
-            </div>
-            <button className="bg-gradient-to-r from-purple-500 to-indigo-600 text-white px-6 py-3 rounded-xl hover:from-purple-600 hover:to-indigo-700 transition-all duration-300">
-              Save Changes
-            </button>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-          <h3 className="text-lg font-semibold text-gray-800 mb-4">Notifications</h3>
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h4 className="font-medium text-gray-800">Email Notifications</h4>
-                <p className="text-sm text-gray-600">Receive email updates about student activities</p>
-              </div>
-              <button className="w-12 h-6 bg-purple-500 rounded-full relative">
-                <div className="w-5 h-5 bg-white rounded-full absolute right-0.5 top-0.5 transition-transform duration-200"></div>
-              </button>
-            </div>
-            <div className="flex items-center justify-between">
-              <div>
-                <h4 className="font-medium text-gray-800">Project Updates</h4>
-                <p className="text-sm text-gray-600">Get notified when students submit work</p>
-              </div>
-              <button className="w-12 h-6 bg-purple-500 rounded-full relative">
-                <div className="w-5 h-5 bg-white rounded-full absolute right-0.5 top-0.5 transition-transform duration-200"></div>
-              </button>
-            </div>
-            <div className="flex items-center justify-between">
-              <div>
-                <h4 className="font-medium text-gray-800">Weekly Reports</h4>
-                <p className="text-sm text-gray-600">Receive weekly progress reports</p>
-              </div>
-              <button className="w-12 h-6 bg-gray-300 rounded-full relative">
-                <div className="w-5 h-5 bg-white rounded-full absolute left-0.5 top-0.5 transition-transform duration-200"></div>
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-          <h3 className="text-lg font-semibold text-gray-800 mb-4">Security</h3>
-          <div className="space-y-4">
-            <button className="w-full flex items-center justify-between p-3 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors duration-200">
-              <span className="font-medium text-gray-700">Change Password</span>
-              <ChevronRight className="w-5 h-5 text-gray-400" />
-            </button>
-            <button className="w-full flex items-center justify-between p-3 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors duration-200">
-              <span className="font-medium text-gray-700">Two-Factor Authentication</span>
-              <ChevronRight className="w-5 h-5 text-gray-400" />
-            </button>
-            <button className="w-full flex items-center justify-between p-3 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors duration-200">
-              <span className="font-medium text-gray-700">Login History</span>
-              <ChevronRight className="w-5 h-5 text-gray-400" />
-            </button>
-          </div>
+      <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+        <h3 className="text-lg font-semibold text-gray-800 mb-4">Profile Settings</h3>
+        <div className="space-y-4">
+          <button className="w-full flex items-center justify-between p-3 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors duration-200">
+            <span className="font-medium text-gray-700">Edit Profile</span>
+            <Edit className="w-5 h-5 text-gray-400" />
+          </button>
+          <button className="w-full flex items-center justify-between p-3 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors duration-200">
+            <span className="font-medium text-gray-700">Change Password</span>
+            <Settings className="w-5 h-5 text-gray-400" />
+          </button>
         </div>
       </div>
     </div>

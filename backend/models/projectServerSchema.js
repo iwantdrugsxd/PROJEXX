@@ -1,4 +1,4 @@
-// models/ProjectServer.js
+// backend/models/projectServerSchema.js
 const mongoose = require("mongoose");
 
 const projectServerSchema = new mongoose.Schema({
