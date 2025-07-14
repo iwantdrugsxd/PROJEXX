@@ -2,68 +2,55 @@ const express = require("express");
 const router = express.Router();
 const ProjectServer = require("../models/projectServerSchema");
 const Student = require("../models/studentSchema");
+const Faculty = require("../models/facultySchema");
 const verifyToken = require("../middleware/verifyToken");
 
 console.log("🔧 projectServerRoutes.js loaded");
 
-// Test route to verify routing works
+// Test route
 router.get("/test", (req, res) => {
   console.log("✅ Test route hit");
   res.json({ message: "Project server routes working!", timestamp: new Date() });
 });
 
-// Join endpoint - with detailed logging
+// 🔥 FIXED: Join endpoint - now accepts 'code' instead of 'serverCode'
 router.post("/join", verifyToken, async (req, res) => {
   console.log("🎯 JOIN route hit");
-  console.log("Headers:", req.headers);
   console.log("User:", req.user);
   console.log("Body:", req.body);
-  console.log("Body type:", typeof req.body);
-  console.log("Raw body:", JSON.stringify(req.body));
   
   try {
-    // Check if user exists
+    // Check authentication
     if (!req.user) {
-      console.log("❌ No user found - authentication failed");
       return res.status(401).json({ 
         message: "Authentication required",
         success: false 
       });
     }
 
-    console.log("User role:", req.user.role);
-    
     if (req.user.role !== "student") {
-      console.log("❌ Access denied - not a student, role is:", req.user.role);
       return res.status(403).json({ 
         message: "Only students can join project servers",
-        success: false,
-        userRole: req.user.role
+        success: false
       });
     }
 
-    const { serverCode } = req.body;
-    console.log("Server code received:", serverCode);
-    console.log("Server code type:", typeof serverCode);
-
-    if (!serverCode || serverCode.trim().length === 0) {
-      console.log("❌ No server code provided");
+    // 🔥 FIXED: Accept 'code' from frontend
+    const { code } = req.body;
+    
+    if (!code || code.trim().length === 0) {
       return res.status(400).json({ 
         message: "Server code is required",
-        success: false,
-        receivedData: req.body
+        success: false
       });
     }
 
     // Find the project server
-    console.log("🔍 Looking for server with code:", serverCode.trim());
-    const projectServer = await ProjectServer.findOne({ code: serverCode.trim() })
+    console.log("🔍 Looking for server with code:", code.trim());
+    const projectServer = await ProjectServer.findOne({ code: code.trim() })
       .populate("faculty", "firstName lastName email");
 
-    console.log("Found server:", projectServer);
-
     if (!projectServer) {
-      console.log("❌ Server not found");
       return res.status(404).json({ 
         message: "Invalid server code. Please check and try again.",
         success: false 
@@ -73,10 +60,8 @@ router.post("/join", verifyToken, async (req, res) => {
     // Get the student
     console.log("🔍 Looking for student:", req.user.id);
     const student = await Student.findById(req.user.id);
-    console.log("Found student:", student ? "Yes" : "No");
 
     if (!student) {
-      console.log("❌ Student not found");
       return res.status(404).json({ 
         message: "Student not found",
         success: false 
@@ -88,10 +73,7 @@ router.post("/join", verifyToken, async (req, res) => {
       serverId => serverId.toString() === projectServer._id.toString()
     );
 
-    console.log("Already joined:", alreadyJoined);
-
     if (alreadyJoined) {
-      console.log("❌ Already joined");
       return res.status(400).json({ 
         message: "You have already joined this project server",
         success: false 
@@ -111,11 +93,12 @@ router.post("/join", verifyToken, async (req, res) => {
       message: `Successfully joined "${projectServer.title}"`,
       success: true,
       server: {
-        id: projectServer._id,
+        _id: projectServer._id,
         title: projectServer.title,
         description: projectServer.description,
         code: projectServer.code,
-        faculty: projectServer.faculty
+        faculty: projectServer.faculty,
+        createdAt: projectServer.createdAt
       }
     });
 
@@ -123,7 +106,89 @@ router.post("/join", verifyToken, async (req, res) => {
     console.error("❌ Error joining server:", err);
     res.status(500).json({ 
       message: "Failed to join server", 
-      error: err.message,
+      error: process.env.NODE_ENV === 'production' ? "Internal server error" : err.message,
+      success: false 
+    });
+  }
+});
+
+// 🔥 NEW: Create Project Server (for Faculty)
+router.post("/create", verifyToken, async (req, res) => {
+  try {
+    if (req.user.role !== "faculty") {
+      return res.status(403).json({ 
+        message: "Only faculty can create project servers",
+        success: false 
+      });
+    }
+
+    const { title, description } = req.body;
+
+    if (!title || title.trim().length === 0) {
+      return res.status(400).json({ 
+        message: "Project title is required",
+        success: false 
+      });
+    }
+
+    // Generate unique project code
+    const generateCode = () => {
+      const prefix = title.substring(0, 3).toUpperCase().replace(/[^A-Z]/g, 'X');
+      const random = Math.floor(Math.random() * 900) + 100;
+      return `${prefix}${random}`;
+    };
+
+    let code = generateCode();
+    let attempts = 0;
+    
+    // Ensure unique code
+    while (attempts < 10) {
+      const existing = await ProjectServer.findOne({ code });
+      if (!existing) break;
+      code = generateCode();
+      attempts++;
+    }
+
+    if (attempts >= 10) {
+      return res.status(500).json({ 
+        message: "Failed to generate unique code",
+        success: false 
+      });
+    }
+
+    const projectServer = new ProjectServer({
+      title: title.trim(),
+      description: description?.trim() || "",
+      code,
+      faculty: req.user.id
+    });
+
+    await projectServer.save();
+
+    // Add to faculty's project servers
+    await Faculty.findByIdAndUpdate(
+      req.user.id,
+      { $push: { projectServers: projectServer._id } }
+    );
+
+    res.status(201).json({
+      message: "Project server created successfully",
+      success: true,
+      server: {
+        _id: projectServer._id,
+        title: projectServer.title,
+        description: projectServer.description,
+        code: projectServer.code,
+        faculty: req.user.id,
+        createdAt: projectServer.createdAt
+      }
+    });
+
+  } catch (err) {
+    console.error("Error creating server:", err);
+    res.status(500).json({ 
+      message: "Failed to create server", 
+      error: process.env.NODE_ENV === 'production' ? "Internal server error" : err.message,
       success: false 
     });
   }
@@ -131,8 +196,6 @@ router.post("/join", verifyToken, async (req, res) => {
 
 // Get student servers
 router.get("/student-servers", verifyToken, async (req, res) => {
-  console.log("📋 GET student-servers route hit");
-  
   try {
     if (req.user.role !== "student") {
       return res.status(403).json({ 
@@ -166,25 +229,73 @@ router.get("/student-servers", verifyToken, async (req, res) => {
     console.error("Error fetching student servers:", err);
     res.status(500).json({ 
       message: "Failed to fetch joined servers", 
-      error: err.message,
+      error: process.env.NODE_ENV === 'production' ? "Internal server error" : err.message,
       success: false 
     });
   }
 });
 
-// Simple route to get server by code
+// Get faculty servers
+router.get("/faculty-servers", verifyToken, async (req, res) => {
+  try {
+    if (req.user.role !== "faculty") {
+      return res.status(403).json({ 
+        message: "Access denied",
+        success: false 
+      });
+    }
+
+    const servers = await ProjectServer.find({ faculty: req.user.id })
+      .populate('faculty', 'firstName lastName email')
+      .sort({ createdAt: -1 });
+
+    res.status(200).json({
+      success: true,
+      servers
+    });
+
+  } catch (err) {
+    console.error("Error fetching faculty servers:", err);
+    res.status(500).json({ 
+      message: "Failed to fetch servers", 
+      error: process.env.NODE_ENV === 'production' ? "Internal server error" : err.message,
+      success: false 
+    });
+  }
+});
+
+// Get server by code (public)
 router.get("/byCode/:code", async (req, res) => {
   try {
-    const server = await ProjectServer.findOne({ code: req.params.code });
+    const server = await ProjectServer.findOne({ code: req.params.code })
+      .populate('faculty', 'firstName lastName email');
+    
     if (!server) {
-      return res.status(404).json({ message: "Server not found" });
+      return res.status(404).json({ 
+        message: "Server not found",
+        success: false 
+      });
     }
-    res.json({ success: true, server });
+    
+    res.json({ 
+      success: true, 
+      server: {
+        _id: server._id,
+        title: server.title,
+        description: server.description,
+        code: server.code,
+        faculty: server.faculty,
+        createdAt: server.createdAt
+      }
+    });
   } catch (err) {
-    res.status(500).json({ message: "Error", error: err.message });
+    res.status(500).json({ 
+      message: "Error fetching server", 
+      error: process.env.NODE_ENV === 'production' ? "Internal server error" : err.message,
+      success: false 
+    });
   }
 });
 
 console.log("🔧 All routes defined in projectServerRoutes.js");
-
 module.exports = router;

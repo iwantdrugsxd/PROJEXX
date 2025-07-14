@@ -5,10 +5,7 @@ import RegisterPage from './components/RegisterPage';
 import StudentDashboard from './components/StudentDashboard';
 import FacultyDashboard from './components/FacultyDashboard';
 
-// Auth Context
 export const AuthContext = createContext();
-
-// API Base URL - Update this to your backend URL
 export const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
 function App() {
@@ -36,7 +33,7 @@ function App() {
         setLoading(false);
         return;
       }
-
+      
       // Check student authentication
       const studentResponse = await fetch(`${API_BASE}/student/dashboard`, {
         credentials: 'include'
@@ -50,12 +47,28 @@ function App() {
         setLoading(false);
         return;
       }
-
+      
       // No active session
       setLoading(false);
     } catch (error) {
       console.log('No active session');
       setLoading(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await fetch(`${API_BASE}/faculty/logout`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      setUser(null);
+      setCurrentView('landing');
+    } catch (error) {
+      console.error('Logout failed:', error);
+      // Still logout on frontend even if backend call fails
+      setUser(null);
+      setCurrentView('landing');
     }
   };
 
@@ -81,7 +94,8 @@ function App() {
       userType, 
       setUserType, 
       currentView, 
-      setCurrentView 
+      setCurrentView,
+      handleLogout  // Add logout function to context
     }}>
       <div className="min-h-screen bg-white">
         {currentView === 'landing' && <LandingPage />}
