@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Plus, Calendar, Award, X } from 'lucide-react';
 import { AuthContext, API_BASE } from '../../App';
+
 const TaskCreator = ({ serverId, onTaskCreated }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -16,7 +17,8 @@ const TaskCreator = ({ serverId, onTaskCreated }) => {
     setLoading(true);
 
     try {
-      const response = await fetch(`${API_BASE}task/create`, {
+      // FIXED: Changed from 'task/create' to 'tasks/create' to match server route
+      const response = await fetch(`${API_BASE}tasks/create`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -39,117 +41,168 @@ const TaskCreator = ({ serverId, onTaskCreated }) => {
           maxPoints: 100
         });
         setIsOpen(false);
+        // Optional: Show success message
+        console.log('✅ Task created successfully:', data.task.title);
       } else {
         alert(data.message || 'Failed to create task');
       }
     } catch (error) {
       console.error('Error creating task:', error);
-      alert('Failed to create task');
+      alert('Failed to create task. Please check your connection and try again.');
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
+  const resetForm = () => {
+    setFormData({
+      title: '',
+      description: '',
+      dueDate: '',
+      maxPoints: 100
+    });
+    setIsOpen(false);
   };
 
   return (
     <>
       <button
         onClick={() => setIsOpen(true)}
-        className="flex items-center space-x-2 bg-gradient-to-r from-purple-500 to-indigo-600 text-white px-6 py-3 rounded-xl hover:from-purple-600 hover:to-indigo-700 transition-all duration-300 transform hover:scale-105"
+        className="flex items-center space-x-2 bg-gradient-to-r from-purple-500 to-indigo-600 text-white px-6 py-3 rounded-lg hover:from-purple-600 hover:to-indigo-700 transition-all duration-200 shadow-lg hover:shadow-xl"
       >
-        <Plus className="w-5 h-5" />
+        <Plus size={20} />
         <span>Create Task</span>
       </button>
 
       {isOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl font-bold text-gray-800">Create New Task</h2>
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl max-w-md w-full p-6">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-xl font-bold text-gray-800">Create New Task</h2>
               <button
-                onClick={() => setIsOpen(false)}
-                className="p-2 hover:bg-gray-100 rounded-full"
+                onClick={resetForm}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
               >
-                <X className="w-6 h-6 text-gray-500" />
+                <X size={24} />
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-6">
+            <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-gray-700 font-medium mb-2">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
                   Task Title *
                 </label>
                 <input
                   type="text"
+                  name="title"
                   value={formData.title}
-                  onChange={(e) => setFormData(prev => ({ ...prev, title: e.target.value }))}
-                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-purple-100 focus:border-purple-400"
-                  placeholder="Enter task title"
+                  onChange={handleInputChange}
                   required
-                  disabled={loading}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  placeholder="Enter task title"
                 />
               </div>
-
+<div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Project server *
+                </label>
+                <input
+                  type="mongoose.Schema.Types.ObjectId"
+                  name="title"
+                  value={formData.projectserver}
+                  onChange={handleInputChange}
+                  required
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  placeholder="Enter server code"
+                />
+              </div> 
               <div>
-                <label className="block text-gray-700 font-medium mb-2">
+  <label className="block text-sm font-medium text-gray-700 mb-2">
+    Assign to Team *
+  </label>
+  <select
+    name="teamId"
+    value={formData.teamId}
+    onChange={handleInputChange}
+    required
+    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+  >
+    <option value="">Select a team</option>
+    {teams.map((team) => (
+      <option key={team._id} value={team._id}>
+        {team.name}
+      </option>
+    ))}
+  </select>
+</div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
                   Description *
                 </label>
                 <textarea
+                  name="description"
                   value={formData.description}
-                  onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
-                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-purple-100 focus:border-purple-400"
-                  placeholder="Describe the task requirements..."
-                  rows="4"
+                  onChange={handleInputChange}
                   required
-                  disabled={loading}
+                  rows={3}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none"
+                  placeholder="Describe the task requirements"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-gray-700 font-medium mb-2">
-                    <Calendar className="w-4 h-4 inline mr-2" />
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <Calendar size={16} className="inline mr-1" />
                     Due Date *
                   </label>
                   <input
                     type="datetime-local"
+                    name="dueDate"
                     value={formData.dueDate}
-                    onChange={(e) => setFormData(prev => ({ ...prev, dueDate: e.target.value }))}
-                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-purple-100 focus:border-purple-400"
+                    onChange={handleInputChange}
                     required
-                    disabled={loading}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-gray-700 font-medium mb-2">
-                    <Award className="w-4 h-4 inline mr-2" />
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <Award size={16} className="inline mr-1" />
                     Max Points
                   </label>
                   <input
                     type="number"
+                    name="maxPoints"
                     value={formData.maxPoints}
-                    onChange={(e) => setFormData(prev => ({ ...prev, maxPoints: parseInt(e.target.value) }))}
-                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-purple-100 focus:border-purple-400"
+                    onChange={handleInputChange}
                     min="1"
-                    max="100"
-                    disabled={loading}
+                    max="1000"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                   />
                 </div>
               </div>
 
-              <div className="flex space-x-4">
+              <div className="flex space-x-3 pt-4">
                 <button
                   type="button"
-                  onClick={() => setIsOpen(false)}
-                  className="flex-1 px-6 py-3 border border-gray-200 text-gray-600 rounded-xl hover:bg-gray-50 transition-colors duration-200"
-                  disabled={loading}
+                  onClick={resetForm}
+                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 px-6 py-3 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-xl hover:from-purple-600 hover:to-indigo-700 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
                   disabled={loading}
+                  className="flex-1 px-4 py-2 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-lg hover:from-purple-600 hover:to-indigo-700 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {loading ? 'Creating...' : 'Create Task'}
                 </button>

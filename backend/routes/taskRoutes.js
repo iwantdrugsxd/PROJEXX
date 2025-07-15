@@ -6,51 +6,9 @@ const path = require('path');
 const fs = require('fs');
 const verifyToken = require('../middleware/verifyToken');
 const Task = require("../models/taskSchema");
-// Import your existing models - adjust paths as needed
 const ProjectServer = require('../models/projectServerSchema');
 const Student = require('../models/studentSchema');
 const Faculty = require('../models/facultySchema');
-
-// Create Task model if it doesn't exist
-// let Task;
-// try {
-//   Task = require('../models/taskSchema');
-// } catch (err) {
-//   console.log('⚠️  Task model not found, creating basic schema');
-//   const mongoose = require('mongoose');
-  
-  // const submissionSchema = new mongoose.Schema({
-  //   student: { type: mongoose.Schema.Types.ObjectId, ref: 'Student', required: true },
-  //   submittedAt: { type: Date, default: Date.now },
-  //   fileName: String,
-  //   filePath: String,
-  //   fileSize: Number,
-  //   comment: String,
-  //   status: { type: String, enum: ['submitted', 'graded', 'returned'], default: 'submitted' },
-  //   grade: { type: Number, min: 0, max: 100 },
-  //   feedback: String,
-  //   gradedAt: Date
-  // });
-
-  // const taskSchema = new mongoose.Schema({
-  //   title: { type: String, required: true, trim: true },
-  //   description: { type: String, required: true },
-  //   server: { type: mongoose.Schema.Types.ObjectId, ref: 'ProjectServer', required: true },
-  //   faculty: { type: mongoose.Schema.Types.ObjectId, ref: 'Faculty', required: true },
-  //   dueDate: { type: Date, required: true },
-  //   maxPoints: { type: Number, default: 100 },
-  //   submissions: [submissionSchema],
-  //   createdAt: { type: Date, default: Date.now },
-  //   updatedAt: { type: Date, default: Date.now }
-  // });
-
-//   taskSchema.pre('save', function(next) {
-//     this.updatedAt = Date.now();
-//     next();
-//   });
-
-//   Task = mongoose.model('Task', taskSchema);
-// }
 
 console.log("🔧 taskRoutes.js loaded");
 
@@ -83,14 +41,30 @@ const upload = multer({
   }
 });
 
-// Create a new task (Faculty only)
-router.post('/task/create', verifyToken, async (req, res) => {
+// FIXED: Create a new task (Faculty only) - Route should be '/create' not '/task/create'
+router.post('/create', verifyToken, async (req, res) => {
   console.log('🎯 CREATE TASK route hit');
   console.log('User:', req.user);
   console.log('Body:', req.body);
 
   try {
-    const { title, description, serverId, dueDate, maxPoints } = req.body;
+    const { title, description, serverId, dueDate, maxPoints,ProjectServer,teamId} = req.body;
+    
+    if (!title || !description || !serverId || !dueDate || !teamId) {
+  return res.status(400).json({ 
+    message: 'All fields including team ID are required', 
+    success: false 
+  });
+}
+
+// Optionally validate that the team belongs to the server
+const team = await require('../models/teamSchema').findById(teamId);
+if (!team || team.server.toString() !== serverId) {
+  return res.status(400).json({ 
+    message: 'Invalid team or team does not belong to this server', 
+    success: false 
+  });
+}
     
     // Check if user is faculty
     if (req.user.role !== 'faculty') {
@@ -116,18 +90,20 @@ router.post('/task/create', verifyToken, async (req, res) => {
       });
     }
 
+    // Create the task
     const task = new Task({
-      title,
-      description,
-      server: serverId,
-      faculty: req.user.id,
-      dueDate: new Date(dueDate),
-      maxPoints: maxPoints || 100,
-      createdAt: new Date()
-    });
-
+  title,
+  description,
+  server: serverId,
+  team: teamId,
+  faculty: req.user.id,
+  dueDate: new Date(dueDate),
+  maxPoints: maxPoints || 100,
+  createdAt: new Date()
+});
     await task.save();
     await task.populate('server', 'title');
+    await task.populate('faculty', 'firstName lastName email');
     
     console.log('✅ Task created successfully:', task.title);
     res.json({ success: true, task });
@@ -379,66 +355,6 @@ router.post('/:taskId/grade', verifyToken, async (req, res) => {
     console.error('❌ Grade task error:', error);
     res.status(500).json({ 
       message: error.message || 'Failed to grade task',
-      success: false 
-    });
-  }
-});
-
-// Download submission file (Faculty only)
-router.get('/:taskId/download/:studentId', verifyToken, async (req, res) => {
-  console.log('🎯 DOWNLOAD FILE route hit');
-  console.log('User:', req.user);
-  console.log('Task ID:', req.params.taskId);
-  console.log('Student ID:', req.params.studentId);
-
-  try {
-    const { taskId, studentId } = req.params;
-    
-    // Check if user is faculty
-    if (req.user.role !== 'faculty') {
-      return res.status(403).json({ 
-        message: 'Only faculty can download submissions',
-        success: false 
-      });
-    }
-    
-    const task = await Task.findById(taskId);
-    if (!task) {
-      return res.status(404).json({ 
-        message: 'Task not found',
-        success: false 
-      });
-    }
-
-    // Verify faculty owns the task
-    if (task.faculty.toString() !== req.user.id) {
-      return res.status(403).json({ 
-        message: 'You can only download submissions for your own tasks',
-        success: false 
-      });
-    }
-
-    const submission = task.submissions.find(s => s.student.toString() === studentId);
-    if (!submission || !submission.filePath) {
-      return res.status(404).json({ 
-        message: 'File not found',
-        success: false 
-      });
-    }
-
-    if (!fs.existsSync(submission.filePath)) {
-      return res.status(404).json({ 
-        message: 'File not found on server',
-        success: false 
-      });
-    }
-
-    console.log('✅ Downloading file:', submission.fileName);
-    res.download(submission.filePath, submission.fileName);
-  } catch (error) {
-    console.error('❌ Download file error:', error);
-    res.status(500).json({ 
-      message: error.message || 'Failed to download file',
       success: false 
     });
   }

@@ -286,7 +286,7 @@ router.post("/join/:teamId", verifyToken, async (req, res) => {
         message: "Project server not found",
         success: false 
       });
-    }
+    } 
 
     const student = await Student.findOne({
       _id: req.user.id,
@@ -299,7 +299,11 @@ router.post("/join/:teamId", verifyToken, async (req, res) => {
         success: false 
       });
     }
-
+router.get('/server/:serverId/teams', verifyToken, async (req, res) => {
+  const { serverId } = req.params;
+  const teams = await Team.find({ server: serverId }).select('name _id');
+  res.json({ success: true, teams });
+});
     // Add student to team
     team.members.push(req.user.id);
     await team.save();

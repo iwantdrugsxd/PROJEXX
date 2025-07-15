@@ -373,9 +373,9 @@ app.use('/api/*', (req, res) => {
         'GET /api/teamRoutes/faculty-teams'
       ],
       tasks: [
-        'POST /api/task/create',
-        'GET /api/task/student-tasks',
-        'GET /api/task/faculty-tasks'
+        'POST /api/tasks/create',
+        'GET /api/tasks/student-tasks',
+        'GET /api/tasks/faculty-tasks'
       ],
       optional: {
         files: fileRoutes ? 'Available' : 'Not installed',

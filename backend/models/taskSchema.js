@@ -23,7 +23,11 @@ const mongoose = require("mongoose");
     maxPoints: { type: Number, default: 100 },
     submissions: [submissionSchema],
     createdAt: { type: Date, default: Date.now },
-    updatedAt: { type: Date, default: Date.now }
+    updatedAt: { type: Date, default: Date.now },
+    team: {
+  type: mongoose.Schema.Types.ObjectId,
+  ref: 'Team'
+}
   });
 
 module.exports = mongoose.model("Task", taskSchema);
