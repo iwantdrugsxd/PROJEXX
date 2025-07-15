@@ -1,112 +1,29 @@
 // backend/models/taskSchema.js
 const mongoose = require("mongoose");
 
-const taskSchema = new mongoose.Schema({
-  title: { type: String, required: true },
-  description: { type: String },
-  
-  team: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "StudentTeam",
-    required: true,
-  },
+ const submissionSchema = new mongoose.Schema({
+    student: { type: mongoose.Schema.Types.ObjectId, ref: 'Student', required: true },
+    submittedAt: { type: Date, default: Date.now },
+    fileName: String,
+    filePath: String,
+    fileSize: Number,
+    comment: String,
+    status: { type: String, enum: ['submitted', 'graded', 'returned'], default: 'submitted' },
+    grade: { type: Number, min: 0, max: 100 },
+    feedback: String,
+    gradedAt: Date
+  });
 
-  // Polymorphic creator
-  createdBy: {
-    type: mongoose.Schema.Types.ObjectId,
-    required: true,
-    refPath: 'creatorModel'
-  },
-  creatorModel: {
-    type: String,
-    required: true,
-    enum: ['Faculty', 'Student']
-  },
-attachments: [{
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'File'
-  }],
-  submissionText: {
-    type: String,
-    default: ""
-  },
-  submissionFiles: [{
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'File'
-  }],
-  submittedAt: {
-    type: Date
-  },
-  submittedBy: {
-    type: mongoose.Schema.Types.ObjectId,
-    refPath: 'submitterModel'
-  },
-  submitterModel: {
-    type: String,
-    enum: ['Student', 'Faculty']
-  },
-  grade: {
-    type: Number,
-    min: 0,
-    max: 100
-  },
-  feedback: {
-    type: String,
-    default: ""
-  },
-  gradedAt: {
-    type: Date
-  },
-  gradedBy: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Faculty'
-  },
-  attachments: [
-    {
-      filename: String,
-      url: String,
-      uploadedBy: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "Student"
-      },
-      taggedMembers: [
-        {
-          type: mongoose.Schema.Types.ObjectId,
-          ref: "Student"
-        }
-      ],
-      uploadedAt: { type: Date, default: Date.now },
-    }
-  ],
-
-  comments: [
-    {
-      author: {
-        type: mongoose.Schema.Types.ObjectId,
-        refPath: "comments.authorModel",
-        required: true,
-      },
-      authorModel: {
-        type: String,
-        enum: ["Faculty", "Student"],
-        required: true
-      },
-      message: { type: String, required: true },
-      createdAt: { type: Date, default: Date.now }
-    }
-  ],
-  
-  dueDate: { type: Date },
-
-  status: {
-    type: String,
-    enum: ["pending", "submitted", "approved", "rejected"],
-    default: "pending"
-  },
-
-  createdAt: { type: Date, default: Date.now },
-  updatedAt: { type: Date },
-  completedAt: { type: Date }
-});
+  const taskSchema = new mongoose.Schema({
+    title: { type: String, required: true, trim: true },
+    description: { type: String, required: true },
+    server: { type: mongoose.Schema.Types.ObjectId, ref: 'ProjectServer', required: true },
+    faculty: { type: mongoose.Schema.Types.ObjectId, ref: 'Faculty', required: true },
+    dueDate: { type: Date, required: true },
+    maxPoints: { type: Number, default: 100 },
+    submissions: [submissionSchema],
+    createdAt: { type: Date, default: Date.now },
+    updatedAt: { type: Date, default: Date.now }
+  });
 
 module.exports = mongoose.model("Task", taskSchema);

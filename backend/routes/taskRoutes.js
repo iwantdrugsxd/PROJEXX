@@ -5,52 +5,52 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const verifyToken = require('../middleware/verifyToken');
-
+const Task = require("../models/taskSchema");
 // Import your existing models - adjust paths as needed
 const ProjectServer = require('../models/projectServerSchema');
 const Student = require('../models/studentSchema');
 const Faculty = require('../models/facultySchema');
 
 // Create Task model if it doesn't exist
-let Task;
-try {
-  Task = require('../models/taskSchema');
-} catch (err) {
-  console.log('⚠️  Task model not found, creating basic schema');
-  const mongoose = require('mongoose');
+// let Task;
+// try {
+//   Task = require('../models/taskSchema');
+// } catch (err) {
+//   console.log('⚠️  Task model not found, creating basic schema');
+//   const mongoose = require('mongoose');
   
-  const submissionSchema = new mongoose.Schema({
-    student: { type: mongoose.Schema.Types.ObjectId, ref: 'Student', required: true },
-    submittedAt: { type: Date, default: Date.now },
-    fileName: String,
-    filePath: String,
-    fileSize: Number,
-    comment: String,
-    status: { type: String, enum: ['submitted', 'graded', 'returned'], default: 'submitted' },
-    grade: { type: Number, min: 0, max: 100 },
-    feedback: String,
-    gradedAt: Date
-  });
+  // const submissionSchema = new mongoose.Schema({
+  //   student: { type: mongoose.Schema.Types.ObjectId, ref: 'Student', required: true },
+  //   submittedAt: { type: Date, default: Date.now },
+  //   fileName: String,
+  //   filePath: String,
+  //   fileSize: Number,
+  //   comment: String,
+  //   status: { type: String, enum: ['submitted', 'graded', 'returned'], default: 'submitted' },
+  //   grade: { type: Number, min: 0, max: 100 },
+  //   feedback: String,
+  //   gradedAt: Date
+  // });
 
-  const taskSchema = new mongoose.Schema({
-    title: { type: String, required: true, trim: true },
-    description: { type: String, required: true },
-    server: { type: mongoose.Schema.Types.ObjectId, ref: 'ProjectServer', required: true },
-    faculty: { type: mongoose.Schema.Types.ObjectId, ref: 'Faculty', required: true },
-    dueDate: { type: Date, required: true },
-    maxPoints: { type: Number, default: 100 },
-    submissions: [submissionSchema],
-    createdAt: { type: Date, default: Date.now },
-    updatedAt: { type: Date, default: Date.now }
-  });
+  // const taskSchema = new mongoose.Schema({
+  //   title: { type: String, required: true, trim: true },
+  //   description: { type: String, required: true },
+  //   server: { type: mongoose.Schema.Types.ObjectId, ref: 'ProjectServer', required: true },
+  //   faculty: { type: mongoose.Schema.Types.ObjectId, ref: 'Faculty', required: true },
+  //   dueDate: { type: Date, required: true },
+  //   maxPoints: { type: Number, default: 100 },
+  //   submissions: [submissionSchema],
+  //   createdAt: { type: Date, default: Date.now },
+  //   updatedAt: { type: Date, default: Date.now }
+  // });
 
-  taskSchema.pre('save', function(next) {
-    this.updatedAt = Date.now();
-    next();
-  });
+//   taskSchema.pre('save', function(next) {
+//     this.updatedAt = Date.now();
+//     next();
+//   });
 
-  Task = mongoose.model('Task', taskSchema);
-}
+//   Task = mongoose.model('Task', taskSchema);
+// }
 
 console.log("🔧 taskRoutes.js loaded");
 
@@ -84,7 +84,7 @@ const upload = multer({
 });
 
 // Create a new task (Faculty only)
-router.post('/create', verifyToken, async (req, res) => {
+router.post('/task/create', verifyToken, async (req, res) => {
   console.log('🎯 CREATE TASK route hit');
   console.log('User:', req.user);
   console.log('Body:', req.body);

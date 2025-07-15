@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Plus, Calendar, Award, X } from 'lucide-react';
-
+import { AuthContext, API_BASE } from '../../App';
 const TaskCreator = ({ serverId, onTaskCreated }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -16,7 +16,7 @@ const TaskCreator = ({ serverId, onTaskCreated }) => {
     setLoading(true);
 
     try {
-      const response = await fetch('/api/tasks/create', {
+      const response = await fetch(`${API_BASE}task/create`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
