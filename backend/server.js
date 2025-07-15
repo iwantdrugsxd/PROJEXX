@@ -51,7 +51,9 @@ if (socketIo) {
     cors: {
       origin: [
         'http://localhost:3000',
+        'http://localhost:3001',
         'http://127.0.0.1:3000',
+        'http://127.0.0.1:3001',
         process.env.FRONTEND_URL
       ].filter(Boolean),
       credentials: true,
@@ -188,12 +190,14 @@ if (rateLimit) {
   app.use('/api/*/register', authLimiter);
 }
 
-// CORS configuration
+// Enhanced CORS configuration
 const corsOptions = {
   origin: function (origin, callback) {
     const allowedOrigins = [
       'http://localhost:3000',
+      'http://localhost:3001',
       'http://127.0.0.1:3000',
+      'http://127.0.0.1:3001',
       process.env.FRONTEND_URL
     ].filter(Boolean);
     
@@ -218,13 +222,37 @@ app.use(cors(corsOptions));
 // Handle preflight requests
 app.options('*', cors(corsOptions));
 
-// Body parsing middleware
-app.use(express.json({ limit: '50mb' })); // Increased for file uploads
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+// Enhanced body parsing middleware
+app.use(express.json({ 
+  limit: '50mb',
+  verify: (req, res, buf) => {
+    try {
+      JSON.parse(buf);
+    } catch (e) {
+      res.status(400).json({ 
+        message: 'Invalid JSON format',
+        success: false 
+      });
+      throw new Error('Invalid JSON');
+    }
+  }
+}));
+
+app.use(express.urlencoded({ 
+  extended: true, 
+  limit: '50mb' 
+}));
+
 app.use(cookieParser());
 
-// Serve static files
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// Serve static files with security headers
+app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
+  setHeaders: (res, path) => {
+    // Prevent execution of uploaded files
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Disposition', 'attachment');
+  }
+}));
 
 // Request logging (only in development)
 if (process.env.NODE_ENV !== 'production') {
@@ -246,7 +274,7 @@ if (process.env.NODE_ENV !== 'production') {
   });
 }
 
-// Health Check
+// Enhanced Health Check
 app.get("/", (req, res) => {
   const uptime = process.uptime();
   const memoryUsage = process.memoryUsage();
@@ -256,10 +284,15 @@ app.get("/", (req, res) => {
     status: "healthy",
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV || 'development',
+    version: "2.0.0",
     uptime: `${Math.floor(uptime / 60)} minutes`,
     memory: {
       used: `${Math.round(memoryUsage.heapUsed / 1024 / 1024)} MB`,
       total: `${Math.round(memoryUsage.heapTotal / 1024 / 1024)} MB`
+    },
+    database: {
+      status: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+      name: mongoose.connection.db ? mongoose.connection.db.databaseName : 'not connected'
     },
     features: {
       socketIO: !!socketIo,
@@ -269,16 +302,23 @@ app.get("/", (req, res) => {
       settings: !!settingsRoutes,
       rateLimit: !!rateLimit,
       helmet: !!helmet
+    },
+    security: {
+      helmet: !!helmet,
+      rateLimit: !!rateLimit,
+      cors: true,
+      secureCookies: true
     }
   });
 });
 
-// API Status endpoint
+// Enhanced API Status endpoint
 app.get("/api/status", (req, res) => {
   res.status(200).json({
     message: "API is running",
     success: true,
-    version: "1.0.0",
+    version: "2.0.0",
+    timestamp: new Date().toISOString(),
     endpoints: {
       auth: "✅ Working",
       projectServers: "✅ Working", 
@@ -288,6 +328,16 @@ app.get("/api/status", (req, res) => {
       calendar: calendarRoutes ? "✅ Available" : "❌ Disabled",
       messaging: messagingRoutes ? "✅ Available" : "❌ Disabled",
       settings: settingsRoutes ? "✅ Available" : "❌ Disabled"
+    },
+    database: {
+      status: mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected',
+      name: mongoose.connection.db ? mongoose.connection.db.databaseName : 'N/A'
+    },
+    security: {
+      helmet: !!helmet,
+      rateLimit: !!rateLimit,
+      cors: true,
+      secureCookies: true
     }
   });
 });
@@ -298,7 +348,6 @@ app.use("/api/student", StudentRoutes);
 app.use("/api/projectServers", projectServerRoutes);
 app.use("/api/teamRoutes", teamRoutes);
 app.use("/api/tasks", taskRoutes);
-
 
 // Optional feature routes (only if modules exist)
 if (fileRoutes) {
@@ -321,16 +370,16 @@ if (settingsRoutes) {
   console.log("⚙️ Settings routes enabled");
 }
 
-// Export data endpoint (basic implementation)
+// Enhanced export data endpoint
 app.get("/api/export/user-data", (req, res) => {
-  // This is a placeholder - implement based on your needs
   const { type = 'all' } = req.query;
   
-  // In a real implementation, you'd fetch user data from database
+  // This is a placeholder - implement based on your needs
   const userData = {
     exportDate: new Date().toISOString(),
     exportType: type,
     message: "Data export feature - implement based on your requirements",
+    version: "2.0.0",
     // Add actual user data here
   };
 
@@ -339,7 +388,7 @@ app.get("/api/export/user-data", (req, res) => {
   res.json(userData);
 });
 
-// 404 handler for API routes
+// Enhanced 404 handler for API routes
 app.use('/api/*', (req, res) => {
   if (process.env.NODE_ENV !== 'production') {
     console.log('🚫 API Route not found:', req.method, req.originalUrl);
@@ -349,6 +398,7 @@ app.use('/api/*', (req, res) => {
     success: false,
     method: req.method, 
     path: req.originalUrl,
+    timestamp: new Date().toISOString(),
     availableEndpoints: {
       auth: [
         'POST /api/faculty/login',
@@ -370,18 +420,48 @@ app.use('/api/*', (req, res) => {
       teams: [
         'POST /api/teamRoutes/createTeam',
         'GET /api/teamRoutes/student-teams',
-        'GET /api/teamRoutes/faculty-teams'
+        'GET /api/teamRoutes/faculty-teams',
+        'GET /api/teamRoutes/server/:serverId/teams',
+        'POST /api/teamRoutes/join/:teamId',
+        'POST /api/teamRoutes/leave/:teamId',
+        'DELETE /api/teamRoutes/:teamId',
+        'GET /api/teamRoutes/search/:query'
       ],
       tasks: [
         'POST /api/tasks/create',
         'GET /api/tasks/student-tasks',
-        'GET /api/tasks/faculty-tasks'
+        'GET /api/tasks/faculty-tasks',
+        'GET /api/tasks/server/:serverId',
+        'GET /api/tasks/server/:serverId/teams',
+        'POST /api/tasks/:taskId/submit',
+        'POST /api/tasks/:taskId/grade/:studentId',
+        'GET /api/tasks/:taskId/submissions',
+        'PUT /api/tasks/:taskId',
+        'DELETE /api/tasks/:taskId'
       ],
       optional: {
-        files: fileRoutes ? 'Available' : 'Not installed',
-        calendar: calendarRoutes ? 'Available' : 'Not installed', 
-        messaging: messagingRoutes ? 'Available' : 'Not installed',
-        settings: settingsRoutes ? 'Available' : 'Not installed'
+        files: fileRoutes ? [
+          'POST /api/files/upload',
+          'GET /api/files/:id',
+          'DELETE /api/files/:id',
+          'GET /api/files/task/:taskId'
+        ] : 'Not installed',
+        calendar: calendarRoutes ? [
+          'GET /api/calendar/events',
+          'POST /api/calendar/create',
+          'PUT /api/calendar/:eventId',
+          'DELETE /api/calendar/:eventId'
+        ] : 'Not installed', 
+        messaging: messagingRoutes ? [
+          'GET /api/messaging/conversations',
+          'POST /api/messaging/send',
+          'GET /api/messaging/:chatId/messages'
+        ] : 'Not installed',
+        settings: settingsRoutes ? [
+          'GET /api/settings/profile',
+          'PUT /api/settings/update',
+          'POST /api/settings/change-password'
+        ] : 'Not installed'
       }
     }
   });
@@ -392,11 +472,12 @@ app.use('*', (req, res) => {
   res.status(404).json({ 
     message: 'Page not found - This is an API server', 
     success: false,
+    timestamp: new Date().toISOString(),
     suggestion: 'Use /api/ prefix for API endpoints or visit / for server status'
   });
 });
 
-// Global error handler
+// Enhanced global error handler
 app.use((err, req, res, next) => {
   console.error('🚨 Global error:', err);
   
@@ -404,7 +485,8 @@ app.use((err, req, res, next) => {
   if (err.message === 'Not allowed by CORS') {
     return res.status(403).json({ 
       message: 'CORS policy violation - Origin not allowed',
-      success: false
+      success: false,
+      timestamp: new Date().toISOString()
     });
   }
   
@@ -413,6 +495,7 @@ app.use((err, req, res, next) => {
     return res.status(400).json({ 
       message: 'Validation error',
       success: false,
+      timestamp: new Date().toISOString(),
       details: process.env.NODE_ENV !== 'production' ? err.errors : undefined
     });
   }
@@ -421,7 +504,8 @@ app.use((err, req, res, next) => {
   if (err.name === 'CastError') {
     return res.status(400).json({ 
       message: 'Invalid ID format',
-      success: false
+      success: false,
+      timestamp: new Date().toISOString()
     });
   }
   
@@ -429,14 +513,16 @@ app.use((err, req, res, next) => {
   if (err.name === 'JsonWebTokenError') {
     return res.status(401).json({ 
       message: 'Invalid authentication token',
-      success: false
+      success: false,
+      timestamp: new Date().toISOString()
     });
   }
 
   if (err.name === 'TokenExpiredError') {
     return res.status(401).json({ 
       message: 'Authentication token expired',
-      success: false
+      success: false,
+      timestamp: new Date().toISOString()
     });
   }
 
@@ -444,22 +530,26 @@ app.use((err, req, res, next) => {
   if (err.code === 'LIMIT_FILE_SIZE') {
     return res.status(400).json({ 
       message: 'File too large',
-      success: false
+      success: false,
+      timestamp: new Date().toISOString()
     });
   }
 
   if (err.code === 'LIMIT_UNEXPECTED_FILE') {
     return res.status(400).json({ 
       message: 'Unexpected file field',
-      success: false
+      success: false,
+      timestamp: new Date().toISOString()
     });
   }
 
   // MongoDB duplicate key error
   if (err.code === 11000) {
+    const field = Object.keys(err.keyPattern)[0];
     return res.status(409).json({ 
-      message: 'Duplicate entry - this value already exists',
-      success: false
+      message: `Duplicate entry - ${field} already exists`,
+      success: false,
+      timestamp: new Date().toISOString()
     });
   }
   
@@ -467,6 +557,7 @@ app.use((err, req, res, next) => {
   res.status(500).json({ 
     message: process.env.NODE_ENV === 'production' ? 'Internal server error' : err.message,
     success: false,
+    timestamp: new Date().toISOString(),
     stack: process.env.NODE_ENV !== 'production' ? err.stack : undefined
   });
 });
@@ -477,6 +568,13 @@ const gracefulShutdown = (signal) => {
   
   server.close(() => {
     console.log('🔌 HTTP server closed');
+    
+    // Close Socket.IO if available
+    if (io) {
+      io.close(() => {
+        console.log('🔌 Socket.IO server closed');
+      });
+    }
     
     mongoose.connection.close(() => {
       console.log('🗄️ MongoDB connection closed');
@@ -501,10 +599,19 @@ process.on('unhandledRejection', (reason, promise) => {
   gracefulShutdown('UNHANDLED_REJECTION');
 });
 
+// Uncaught exception handler
+process.on('uncaughtException', (err) => {
+  console.error('🚨 Uncaught Exception:', err);
+  gracefulShutdown('UNCAUGHT_EXCEPTION');
+});
+
 // Connect to MongoDB and start server
 mongoose.connect(MONGO_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
+  maxPoolSize: 10,
+  serverSelectionTimeoutMS: 5000,
+  socketTimeoutMS: 45000
 })
   .then(() => {
     console.log("✅ MongoDB connected successfully");
@@ -517,6 +624,7 @@ mongoose.connect(MONGO_URI, {
       console.log(`🌐 Server: http://localhost:${PORT}`);
       console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
       console.log(`🔗 CORS: Frontend origins configured`);
+      console.log(`📁 Uploads: ${uploadsDir}`);
       
       // Feature status
       console.log('\n📋 Features Status:');
@@ -543,7 +651,7 @@ mongoose.connect(MONGO_URI, {
       console.log(`   👤 Auth: /api/faculty/* & /api/student/*`);
       console.log(`   🏢 Servers: /api/projectServers/*`);
       console.log(`   👥 Teams: /api/teamRoutes/*`);
-      console.log(`   📝 Tasks: /api/task/*`);
+      console.log(`   📝 Tasks: /api/tasks/*`);
       
       if (fileRoutes) console.log(`   📎 Files: /api/files/*`);
       if (calendarRoutes) console.log(`   📅 Calendar: /api/calendar/*`);

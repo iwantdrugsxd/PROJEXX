@@ -33,6 +33,7 @@ import CalendarView from './Calendar/CalendarView';
 import MessagingSystem from './Messaging/MessagingSystem.jsx';
 import SettingsPage from './Settings/SettingsPage';
 
+import QuickTaskCreator from './TaskManagement/QuickTaskCreator';
 function FacultyDashboard() {
   // ✅ Use logout from context instead of local implementation
  const { user, setUser, setCurrentView, handleLogout } = useContext(AuthContext);
@@ -700,12 +701,18 @@ function TasksTab({ projects }) {
               <p className="text-gray-600">Task Management</p>
             </div>
           </div>
-          
+            <QuickTaskCreator 
+  onTaskCreated={(task) => {
+    console.log('Task created:', task);
+    // Optionally refresh any task lists
+  }}
+/>
           <TaskList 
             serverId={selectedProject._id} 
             userRole="faculty" 
             userId={null} 
           />
+          
         </div>
       )}
     </div>

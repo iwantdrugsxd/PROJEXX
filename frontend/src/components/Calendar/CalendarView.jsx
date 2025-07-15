@@ -14,7 +14,8 @@ import {
   Trash2,
   Filter,
   MapPin,
-  Video
+  Video,
+  X
 } from 'lucide-react';
 
 function CalendarView({ userRole, userId }) {
@@ -48,7 +49,7 @@ function CalendarView({ userRole, userId }) {
 
       // Load tasks with due dates
       const tasksResponse = await fetch(
-        `${API_BASE}/taskRoutes/${userRole === 'faculty' ? 'faculty-tasks' : 'student-tasks'}`,
+        `${API_BASE}/tasks/${userRole === 'faculty' ? 'faculty-tasks' : 'student-tasks'}`,
         { credentials: 'include' }
       );
       
@@ -925,6 +926,28 @@ function EventDetailsModal({ event, userRole, onClose, onEventUpdated }) {
               </div>
             </div>
           )}
+
+          {event.priority && (
+            <div>
+              <h4 className="font-medium text-gray-800 mb-1">Priority</h4>
+              <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${
+                event.priority === 'high' ? 'bg-red-100 text-red-700' :
+                event.priority === 'medium' ? 'bg-yellow-100 text-yellow-700' :
+                'bg-green-100 text-green-700'
+              }`}>
+                {event.priority} priority
+              </span>
+            </div>
+          )}
+
+          {event.createdBy && (
+            <div>
+              <h4 className="font-medium text-gray-800 mb-1">Created By</h4>
+              <div className="text-gray-600">
+                {event.createdBy.firstName} {event.createdBy.lastName}
+              </div>
+            </div>
+          )}
         </div>
 
         {userRole === 'faculty' && event.type !== 'task' && (
@@ -952,390 +975,3 @@ function EventDetailsModal({ event, userRole, onClose, onEventUpdated }) {
 }
 
 export default CalendarView;
-
-// backend/routes/calendarRoutes.js
-const express = require("express");
-const router = express.Router();
-const Event = require("../models/eventSchema");
-const verifyToken = require("../middleware/verifyToken");
-
-console.log("🔧 calendarRoutes.js loaded");
-
-// ✅ Create new event
-router.post("/events", verifyToken, async (req, res) => {
-  try {
-    const {
-      title,
-      description,
-      type,
-      startDate,
-      endDate,
-      location,
-      isVirtual,
-      meetingLink,
-      attendees,
-      reminders,
-      isRecurring,
-      recurrenceRule,
-      priority
-    } = req.body;
-
-    // Validation
-    if (!title || !startDate || !endDate) {
-      return res.status(400).json({
-        message: "Title, start date, and end date are required",
-        success: false
-      });
-    }
-
-    if (new Date(startDate) >= new Date(endDate)) {
-      return res.status(400).json({
-        message: "End date must be after start date",
-        success: false
-      });
-    }
-
-    const event = new Event({
-      title: title.trim(),
-      description: description?.trim() || "",
-      type: type || "meeting",
-      startDate: new Date(startDate),
-      endDate: new Date(endDate),
-      location: location?.trim() || "",
-      isVirtual: isVirtual || false,
-      meetingLink: meetingLink?.trim() || "",
-      createdBy: req.user.id,
-      creatorModel: req.user.role === "faculty" ? "Faculty" : "Student",
-      attendees: attendees || [],
-      reminders: reminders || [15],
-      isRecurring: isRecurring || false,
-      recurrenceRule: recurrenceRule || "",
-      priority: priority || "medium"
-    });
-
-    await event.save();
-
-    const populatedEvent = await Event.findById(event._id)
-      .populate("createdBy", "firstName lastName email");
-
-    res.status(201).json({
-      message: "Event created successfully",
-      success: true,
-      event: populatedEvent
-    });
-  } catch (err) {
-    console.error("Error creating event:", err);
-    res.status(500).json({
-      message: "Failed to create event",
-      error: process.env.NODE_ENV === 'production' ? "Internal server error" : err.message,
-      success: false
-    });
-  }
-});
-
-// ✅ Get events for user
-router.get("/events", verifyToken, async (req, res) => {
-  try {
-    const { start, end, type } = req.query;
-
-    // Build query
-    const query = {
-      $or: [
-        { createdBy: req.user.id },
-        { attendees: req.user.id }
-      ]
-    };
-
-    // Add date range filter
-    if (start && end) {
-      query.startDate = {
-        $gte: new Date(start),
-        $lte: new Date(end)
-      };
-    }
-
-    // Add type filter
-    if (type && type !== 'all') {
-      query.type = type;
-    }
-
-    const events = await Event.find(query)
-      .populate("createdBy", "firstName lastName email")
-      .populate("attendees", "firstName lastName email")
-      .sort({ startDate: 1 });
-
-    res.status(200).json({
-      success: true,
-      events,
-      count: events.length
-    });
-  } catch (err) {
-    console.error("Error fetching events:", err);
-    res.status(500).json({
-      message: "Failed to fetch events",
-      success: false
-    });
-  }
-});
-
-// ✅ Get single event
-router.get("/events/:eventId", verifyToken, async (req, res) => {
-  try {
-    const { eventId } = req.params;
-
-    const event = await Event.findById(eventId)
-      .populate("createdBy", "firstName lastName email")
-      .populate("attendees", "firstName lastName email");
-
-    if (!event) {
-      return res.status(404).json({
-        message: "Event not found",
-        success: false
-      });
-    }
-
-    // Check access permissions
-    const isCreator = event.createdBy._id.toString() === req.user.id;
-    const isAttendee = event.attendees.some(attendee => attendee._id.toString() === req.user.id);
-
-    if (!isCreator && !isAttendee) {
-      return res.status(403).json({
-        message: "Access denied",
-        success: false
-      });
-    }
-
-    res.status(200).json({
-      success: true,
-      event
-    });
-  } catch (err) {
-    console.error("Error fetching event:", err);
-    res.status(500).json({
-      message: "Failed to fetch event",
-      success: false
-    });
-  }
-});
-
-// ✅ Update event
-router.put("/events/:eventId", verifyToken, async (req, res) => {
-  try {
-    const { eventId } = req.params;
-
-    const event = await Event.findById(eventId);
-    if (!event) {
-      return res.status(404).json({
-        message: "Event not found",
-        success: false
-      });
-    }
-
-    // Check permissions - only creator can update
-    if (event.createdBy.toString() !== req.user.id) {
-      return res.status(403).json({
-        message: "Only event creator can update the event",
-        success: false
-      });
-    }
-
-    const updateData = { ...req.body };
-    delete updateData._id;
-    delete updateData.createdBy;
-    delete updateData.createdAt;
-
-    // Validate dates if provided
-    if (updateData.startDate && updateData.endDate) {
-      if (new Date(updateData.startDate) >= new Date(updateData.endDate)) {
-        return res.status(400).json({
-          message: "End date must be after start date",
-          success: false
-        });
-      }
-    }
-
-    const updatedEvent = await Event.findByIdAndUpdate(
-      eventId,
-      updateData,
-      { new: true }
-    ).populate("createdBy", "firstName lastName email")
-     .populate("attendees", "firstName lastName email");
-
-    res.status(200).json({
-      message: "Event updated successfully",
-      success: true,
-      event: updatedEvent
-    });
-  } catch (err) {
-    console.error("Error updating event:", err);
-    res.status(500).json({
-      message: "Failed to update event",
-      success: false
-    });
-  }
-});
-
-// ✅ Delete event
-router.delete("/events/:eventId", verifyToken, async (req, res) => {
-  try {
-    const { eventId } = req.params;
-
-    const event = await Event.findById(eventId);
-    if (!event) {
-      return res.status(404).json({
-        message: "Event not found",
-        success: false
-      });
-    }
-
-    // Check permissions - only creator can delete
-    if (event.createdBy.toString() !== req.user.id) {
-      return res.status(403).json({
-        message: "Only event creator can delete the event",
-        success: false
-      });
-    }
-
-    await Event.findByIdAndDelete(eventId);
-
-    res.status(200).json({
-      message: "Event deleted successfully",
-      success: true
-    });
-  } catch (err) {
-    console.error("Error deleting event:", err);
-    res.status(500).json({
-      message: "Failed to delete event",
-      success: false
-    });
-  }
-});
-
-// ✅ Get upcoming events
-router.get("/upcoming", verifyToken, async (req, res) => {
-  try {
-    const { limit = 5 } = req.query;
-    const now = new Date();
-
-    const events = await Event.find({
-      $or: [
-        { createdBy: req.user.id },
-        { attendees: req.user.id }
-      ],
-      startDate: { $gt: now }
-    })
-      .populate("createdBy", "firstName lastName email")
-      .sort({ startDate: 1 })
-      .limit(parseInt(limit));
-
-    res.status(200).json({
-      success: true,
-      events
-    });
-  } catch (err) {
-    console.error("Error fetching upcoming events:", err);
-    res.status(500).json({
-      message: "Failed to fetch upcoming events",
-      success: false
-    });
-  }
-});
-
-console.log("🔧 All calendar routes defined successfully");
-
-module.exports = router;
-
-// backend/models/eventSchema.js
-const mongoose = require("mongoose");
-
-const eventSchema = new mongoose.Schema({
-  title: {
-    type: String,
-    required: true,
-    trim: true
-  },
-  description: {
-    type: String,
-    default: ""
-  },
-  type: {
-    type: String,
-    enum: ['meeting', 'deadline', 'reminder', 'presentation', 'workshop', 'other'],
-    default: 'meeting'
-  },
-  startDate: {
-    type: Date,
-    required: true
-  },
-  endDate: {
-    type: Date,
-    required: true
-  },
-  location: {
-    type: String,
-    default: ""
-  },
-  isVirtual: {
-    type: Boolean,
-    default: false
-  },
-  meetingLink: {
-    type: String,
-    default: ""
-  },
-  createdBy: {
-    type: mongoose.Schema.Types.ObjectId,
-    required: true,
-    refPath: 'creatorModel'
-  },
-  creatorModel: {
-    type: String,
-    required: true,
-    enum: ['Student', 'Faculty']
-  },
-  attendees: [{
-    type: mongoose.Schema.Types.ObjectId,
-    refPath: 'attendeeModel'
-  }],
-  attendeeModel: {
-    type: String,
-    enum: ['Student', 'Faculty'],
-    default: 'Student'
-  },
-  reminders: [{
-    type: Number, // minutes before event
-    default: 15
-  }],
-  isRecurring: {
-    type: Boolean,
-    default: false
-  },
-  recurrenceRule: {
-    type: String,
-    default: ""
-  },
-  priority: {
-    type: String,
-    enum: ['low', 'medium', 'high'],
-    default: 'medium'
-  },
-  status: {
-    type: String,
-    enum: ['scheduled', 'in-progress', 'completed', 'cancelled'],
-    default: 'scheduled'
-  },
-  isActive: {
-    type: Boolean,
-    default: true
-  }
-}, {
-  timestamps: true
-});
-
-// Add indexes for better performance
-eventSchema.index({ createdBy: 1, startDate: 1 });
-eventSchema.index({ attendees: 1, startDate: 1 });
-eventSchema.index({ startDate: 1, endDate: 1 });
-eventSchema.index({ type: 1 });
-
-module.exports = mongoose.model("Event", eventSchema);
