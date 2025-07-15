@@ -29,8 +29,8 @@ import {
 
 // ✅ NEW: Import the actual functional components
 import TaskList from './TaskManagement/TaskList';
-import CalendarView from './Calendar/CalendarView.jsx';
-import MessagingSystem from './Messaging/MessagingSystem.jsx/index.js';
+import CalendarView from './Calendar/CalendarView';
+import MessagingSystem from './Messaging/MessagingSystem.jsx';
 import SettingsPage from './Settings/SettingsPage';
 
 function FacultyDashboard() {
