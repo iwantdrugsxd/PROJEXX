@@ -27,9 +27,15 @@ import {
   Share2
 } from 'lucide-react';
 
+// ✅ NEW: Import the actual functional components
+import TaskList from './TaskManagement/TaskList';
+import CalendarView from './Calendar/CalendarView.jsx';
+import MessagingSystem from './Messaging/MessagingSystem.jsx/index.js';
+import SettingsPage from './Settings/SettingsPage';
+
 function FacultyDashboard() {
   // ✅ Use logout from context instead of local implementation
-  const { user, handleLogout } = useContext(AuthContext);
+ const { user, setUser, setCurrentView, handleLogout } = useContext(AuthContext);
   
   const [activeTab, setActiveTab] = useState('overview');
   const [loading, setLoading] = useState(true);
@@ -37,7 +43,10 @@ function FacultyDashboard() {
   const [students, setStudents] = useState([]);
   const [analytics, setAnalytics] = useState({});
   const [notifications, setNotifications] = useState([]);
-
+{activeTab === 'tasks' && <TaskList userRole="faculty" userId={user?.id} />}
+{activeTab === 'calendar' && <CalendarView userRole="faculty" userId={user?.id} />}
+{activeTab === 'messages' && <MessagingSystem userRole="faculty" userId={user?.id} user={user} />}
+{activeTab === 'settings' && <SettingsPage user={user} userRole="faculty" onUserUpdate={setUser} />}
   useEffect(() => {
     loadDashboardData();
   }, []);
@@ -198,15 +207,39 @@ function FacultyDashboard() {
 
         {/* Main Content */}
         <main className="flex-1 p-6">
-          {activeTab === 'overview' && <OverviewTab notifications={notifications} analytics={analytics} />}
+          {activeTab === 'overview' && <OverviewTab analytics={analytics} notifications={notifications} />}
           {activeTab === 'servers' && <ServersTab projects={projects} setProjects={setProjects} />}
           {activeTab === 'teams' && <TeamsTab />}
-          {activeTab === 'tasks' && <TasksTab />}
           {activeTab === 'students' && <StudentsTab students={students} />}
           {activeTab === 'analytics' && <AnalyticsTab analytics={analytics} projects={projects} />}
-          {activeTab === 'calendar' && <CalendarTab />}
-          {activeTab === 'messages' && <MessagesTab />}
-          {activeTab === 'settings' && <SettingsTab user={user} />}
+          
+          {/* ✅ NEW: Replace placeholder components with actual functional ones */}
+          {activeTab === 'tasks' && (
+            <TaskList 
+              userRole="faculty" 
+              userId={user?.id} 
+            />
+          )}
+          {activeTab === 'calendar' && (
+            <CalendarView 
+              userRole="faculty" 
+              userId={user?.id} 
+            />
+          )}
+          {activeTab === 'messages' && (
+            <MessagingSystem 
+              userRole="faculty" 
+              userId={user?.id} 
+              user={user} 
+            />
+          )}
+          {activeTab === 'settings' && (
+            <SettingsPage 
+              user={user} 
+              userRole="faculty" 
+              onUserUpdate={setUser} 
+            />
+          )}
         </main>
       </div>
     </div>

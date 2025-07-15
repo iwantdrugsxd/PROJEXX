@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { AuthContext, API_BASE } from '../App';
 
-import CalendarView from 'Calendar/CalendarView';
-import MessagingSystem from 'Messaging/MessagingSystem';
-import SettingsPage from 'Settings/SettingsPage';
+import TaskList from './TaskManagement/TaskList';
+import CalendarView from './Calendar/CalendarView';
+import MessagingSystem from './Messaging/MessagingSystem';
+import SettingsPage from './Settings/SettingsPage';
 import { 
   Award, 
   Server, 
@@ -26,9 +27,12 @@ import {
   Trash2
 } from 'lucide-react';
 
+// Import new components
+
+
 function StudentDashboard() {
-  // ✅ Use logout from context instead of local implementation
-  const { user, handleLogout } = useContext(AuthContext);
+  // ✅ Use logout from context
+  const { user, setUser, setCurrentView, handleLogout } = useContext(AuthContext);
   
   const [activeTab, setActiveTab] = useState('overview');
   const [loading, setLoading] = useState(true);
@@ -39,12 +43,11 @@ function StudentDashboard() {
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [showCreateTeamModal, setShowCreateTeamModal] = useState(false);
   const [joinCode, setJoinCode] = useState('');
-  const [joining, setJoining] = useState(false); // ✅ Add loading state
-// Replace the existing tab content with:
-
-{activeTab === 'calendar' && <CalendarView userRole="faculty" userId={user?.id} />}
-{activeTab === 'messages' && <MessagingSystem userRole="faculty" userId={user?.id} user={user} />}
-{activeTab === 'settings' && <SettingsPage user={user} userRole="faculty" onUserUpdate={setUser} />}
+  const [joining, setJoining] = useState(false); // ✅ Added missing state
+{activeTab === 'tasks' && <TaskList userRole="student" userId={user?.id} />}
+{activeTab === 'calendar' && <CalendarView userRole="student" userId={user?.id} />}
+{activeTab === 'messages' && <MessagingSystem userRole="student" userId={user?.id} user={user} />}
+{activeTab === 'settings' && <SettingsPage user={user} userRole="student" onUserUpdate={setUser} />}
   useEffect(() => {
     loadDashboardData();
   }, []);
@@ -161,21 +164,16 @@ function StudentDashboard() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ code: joinCode.trim().toUpperCase() }) // ✅ Normalize code
+        body: JSON.stringify({ code: joinCode.trim().toUpperCase() })
       });
 
       const data = await response.json();
       
       if (data.success) {
-        // ✅ Update servers list immediately
         setServers(prev => [data.server, ...prev]);
         setJoinCode('');
         setShowJoinModal(false);
-        
-        // ✅ Better success message
         alert(`Successfully joined "${data.server.title}"!`);
-        
-        // ✅ Refresh server list from backend
         await loadServers();
       } else {
         alert(data.message || 'Failed to join server');
@@ -303,10 +301,34 @@ function StudentDashboard() {
               loadTeams={loadTeams}
             />
           )}
-          {activeTab === 'tasks' && <TasksTab tasks={tasks} />}
-          {activeTab === 'calendar' && <CalendarTab />}
-          {activeTab === 'messages' && <MessagesTab />}
-          {activeTab === 'settings' && <SettingsTab user={user} />}
+          
+          {/* ✅ NEW: Use actual functional components */}
+          {activeTab === 'tasks' && (
+            <TaskList 
+              userRole="student" 
+              userId={user?.id} 
+            />
+          )}
+          {activeTab === 'calendar' && (
+            <CalendarView 
+              userRole="student" 
+              userId={user?.id} 
+            />
+          )}
+          {activeTab === 'messages' && (
+            <MessagingSystem 
+              userRole="student" 
+              userId={user?.id} 
+              user={user} 
+            />
+          )}
+          {activeTab === 'settings' && (
+            <SettingsPage 
+              user={user} 
+              userRole="student" 
+              onUserUpdate={setUser} 
+            />
+          )}
         </main>
       </div>
     </div>
@@ -434,7 +456,7 @@ function OverviewTab({ notifications }) {
   );
 }
 
-// Servers Tab Component - ✅ Enhanced with better UX
+// Servers Tab Component
 function ServersTab({ servers, setServers, showJoinModal, setShowJoinModal, handleJoinServer, joinCode, setJoinCode, joining }) {
   return (
     <div className="space-y-6">
@@ -543,16 +565,14 @@ function ServersTab({ servers, setServers, showJoinModal, setShowJoinModal, hand
   );
 }
 
-// Teams Tab Component - ✅ Enhanced with better validation
+// Teams Tab Component
 function TeamsTab({ teams, setTeams, servers, showCreateTeamModal, setShowCreateTeamModal, loadTeams }) {
   const [newTeam, setNewTeam] = useState({ name: '', serverCode: '', memberEmails: [''] });
   const [loading, setLoading] = useState(false);
 
-  // ✅ Enhanced team creation with better validation
   const handleCreateTeam = async (e) => {
     e.preventDefault();
     
-    // ✅ Enhanced validation
     if (!newTeam.name.trim()) {
       alert('Team name is required');
       return;
@@ -570,7 +590,6 @@ function TeamsTab({ teams, setTeams, servers, showCreateTeamModal, setShowCreate
 
     const validEmails = newTeam.memberEmails.filter(email => email.trim().length > 0);
     
-    // ✅ Email format validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     const invalidEmails = validEmails.filter(email => !emailRegex.test(email.trim()));
     
@@ -606,7 +625,6 @@ function TeamsTab({ teams, setTeams, servers, showCreateTeamModal, setShowCreate
         setShowCreateTeamModal(false);
         alert('Team created successfully!');
         
-        // ✅ Refresh teams list
         if (loadTeams) loadTeams();
       } else {
         alert(data.message || 'Failed to create team');
@@ -803,86 +821,6 @@ function TeamsTab({ teams, setTeams, servers, showCreateTeamModal, setShowCreate
           </button>
         </div>
       )}
-    </div>
-  );
-}
-
-// Tasks Tab Component
-function TasksTab({ tasks }) {
-  return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold text-gray-800">Tasks</h2>
-        <p className="text-gray-600">Track and manage your assignments</p>
-      </div>
-
-      <div className="bg-white rounded-2xl shadow-lg p-6">
-        <div className="text-center py-12">
-          <BookOpen className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-600 mb-2">Tasks Coming Soon</h3>
-          <p className="text-gray-500">Task management functionality will be available in the next update</p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// Calendar Tab Component
-function CalendarTab() {
-  return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold text-gray-800">Calendar</h2>
-        <p className="text-gray-600">Manage your schedule and deadlines</p>
-      </div>
-
-      <div className="bg-white rounded-2xl shadow-lg p-6">
-        <div className="text-center py-12">
-          <Calendar className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-600 mb-2">Calendar Coming Soon</h3>
-          <p className="text-gray-500">Calendar functionality will be available in the next update</p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// Messages Tab Component
-function MessagesTab() {
-  return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold text-gray-800">Messages</h2>
-        <p className="text-gray-600">Communicate with your team members</p>
-      </div>
-
-      <div className="bg-white rounded-2xl shadow-lg p-6">
-        <div className="text-center py-12">
-          <MessageSquare className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-600 mb-2">Messages Coming Soon</h3>
-          <p className="text-gray-500">Messaging functionality will be available in the next update</p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// Settings Tab Component
-function SettingsTab({ user }) {
-  return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold text-gray-800">Settings</h2>
-        <p className="text-gray-600">Manage your account and preferences</p>
-      </div>
-
-      <div className="bg-white rounded-2xl shadow-lg p-6">
-        <div className="text-center py-12">
-          <Settings className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-600 mb-2">Settings Coming Soon</h3>
-          <p className="text-gray-500">Account settings will be available in the next update</p>
-        </div>
-      </div>
     </div>
   );
 }
