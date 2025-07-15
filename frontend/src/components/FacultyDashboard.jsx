@@ -643,21 +643,71 @@ function TeamsTab() {
 }
 
 // Tasks Tab Component
-function TasksTab() {
+// Replace the existing TasksTab function with this:
+function TasksTab({ projects }) {
+  const [selectedProject, setSelectedProject] = useState(null);
+
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold text-gray-800">Tasks</h2>
+        <h2 className="text-2xl font-bold text-gray-800">Task Management</h2>
         <p className="text-gray-600">Create and manage assignments for your students</p>
       </div>
 
-      <div className="bg-white rounded-2xl shadow-lg p-6">
-        <div className="text-center py-12">
-          <BookOpen className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-600 mb-2">Task Management Coming Soon</h3>
-          <p className="text-gray-500">Task creation and assignment functionality will be available in the next update</p>
+      {!selectedProject ? (
+        <div className="space-y-4">
+          <h3 className="text-lg font-medium text-gray-700">Select a Project Server</h3>
+          {projects.length === 0 ? (
+            <div className="text-center py-12 bg-white rounded-2xl shadow-lg">
+              <BookOpen className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-gray-600 mb-2">No Project Servers</h3>
+              <p className="text-gray-500">Create a project server first to manage tasks</p>
+            </div>
+          ) : (
+            <div className="grid gap-4">
+              {projects.map((project) => (
+                <div 
+                  key={project._id}
+                  onClick={() => setSelectedProject(project)}
+                  className="bg-white p-6 rounded-xl shadow-lg hover:shadow-xl transition-shadow cursor-pointer border-l-4 border-purple-500"
+                >
+                  <h4 className="font-semibold text-gray-800">{project.title}</h4>
+                  <p className="text-gray-600 text-sm mt-1">{project.description}</p>
+                  <div className="flex items-center justify-between mt-4">
+                    <span className="text-sm text-gray-500">
+                      {project.students?.length || 0} students
+                    </span>
+                    <span className="text-purple-600 text-sm font-medium">
+                      Manage Tasks →
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
-      </div>
+      ) : (
+        <div>
+          <div className="flex items-center space-x-4 mb-6">
+            <button
+              onClick={() => setSelectedProject(null)}
+              className="text-purple-600 hover:text-purple-700 font-medium"
+            >
+              ← Back to Projects
+            </button>
+            <div>
+              <h3 className="text-xl font-semibold text-gray-800">{selectedProject.title}</h3>
+              <p className="text-gray-600">Task Management</p>
+            </div>
+          </div>
+          
+          <TaskList 
+            serverId={selectedProject._id} 
+            userRole="faculty" 
+            userId={null} 
+          />
+        </div>
+      )}
     </div>
   );
 }

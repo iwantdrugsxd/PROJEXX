@@ -297,7 +297,7 @@ app.use("/api/faculty", FacultyRoutes);
 app.use("/api/student", StudentRoutes);
 app.use("/api/projectServers", projectServerRoutes);
 app.use("/api/teamRoutes", teamRoutes);
-app.use("/api/task", taskRoutes);
+app.use("/api/tasks", taskRoutes);
 
 // Optional feature routes (only if modules exist)
 if (fileRoutes) {

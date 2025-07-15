@@ -303,12 +303,9 @@ function StudentDashboard() {
           )}
           
           {/* ✅ NEW: Use actual functional components */}
-          {activeTab === 'tasks' && (
-            <TaskList 
-              userRole="student" 
-              userId={user?.id} 
-            />
-          )}
+         {activeTab === 'tasks' && (
+  <TasksTab servers={servers} />
+)}
           {activeTab === 'calendar' && (
             <CalendarView 
               userRole="student" 
@@ -819,6 +816,74 @@ function TeamsTab({ teams, setTeams, servers, showCreateTeamModal, setShowCreate
           >
             Create Team
           </button>
+        </div>
+        
+      )}
+    </div>
+  );
+}
+function TasksTab({ servers }) {
+  const [selectedServer, setSelectedServer] = useState(null);
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-bold text-gray-800">My Tasks</h2>
+        <p className="text-gray-600">View and complete your assignments</p>
+      </div>
+
+      {!selectedServer ? (
+        <div className="space-y-4">
+          <h3 className="text-lg font-medium text-gray-700">Select a Project Server</h3>
+          {servers.length === 0 ? (
+            <div className="text-center py-12 bg-white rounded-2xl shadow-lg">
+              <BookOpen className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-gray-600 mb-2">No Project Servers</h3>
+              <p className="text-gray-500">Join a project server to see your tasks</p>
+            </div>
+          ) : (
+            <div className="grid gap-4">
+              {servers.map((server) => (
+                <div 
+                  key={server._id}
+                  onClick={() => setSelectedServer(server)}
+                  className="bg-white p-6 rounded-xl shadow-lg hover:shadow-xl transition-shadow cursor-pointer border-l-4 border-blue-500"
+                >
+                  <h4 className="font-semibold text-gray-800">{server.title}</h4>
+                  <p className="text-gray-600 text-sm mt-1">{server.description}</p>
+                  <div className="flex items-center justify-between mt-4">
+                    <span className="text-sm text-gray-500">
+                      Faculty: {server.faculty?.firstName} {server.faculty?.lastName}
+                    </span>
+                    <span className="text-blue-600 text-sm font-medium">
+                      View Tasks →
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div>
+          <div className="flex items-center space-x-4 mb-6">
+            <button
+              onClick={() => setSelectedServer(null)}
+              className="text-blue-600 hover:text-blue-700 font-medium"
+            >
+              ← Back to Servers
+            </button>
+            <div>
+              <h3 className="text-xl font-semibold text-gray-800">{selectedServer.title}</h3>
+              <p className="text-gray-600">Your Tasks</p>
+            </div>
+          </div>
+          
+          <TaskList 
+            serverId={selectedServer._id} 
+            userRole="student" 
+            userId={null} 
+          />
         </div>
       )}
     </div>
