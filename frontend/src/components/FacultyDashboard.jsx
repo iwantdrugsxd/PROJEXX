@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { API_BASE } from '../App';
+import React, { useState, useEffect, useContext } from 'react';
+import { AuthContext, API_BASE } from '../App';
 import { 
   Award, 
   Server, 
@@ -27,7 +27,10 @@ import {
   Share2
 } from 'lucide-react';
 
- function FacultyDashboard({ user, setUser, setCurrentView }) {
+function FacultyDashboard() {
+  // ✅ Use logout from context instead of local implementation
+  const { user, handleLogout } = useContext(AuthContext);
+  
   const [activeTab, setActiveTab] = useState('overview');
   const [loading, setLoading] = useState(true);
   const [projects, setProjects] = useState([]);
@@ -101,30 +104,12 @@ import {
     }
   };
 
- const handleLogout = async () => {
-  try {
-    await fetch(`${API_BASE}/faculty/logout`, {
-      method: 'POST',
-      credentials: 'include',
-    });
-
-    setUser(null);
-    setCurrentView('landing');
-  } catch (error) {
-    console.error('Logout failed:', error);
-    // Still logout on frontend even if backend call fails
-    setUser(null);
-    setCurrentView('landing');
-  }
-};
-
-
   const sidebarItems = [
     { id: 'overview', label: 'Overview', icon: Award },
     { id: 'servers', label: 'Project Servers', icon: Server },
     { id: 'teams', label: 'Teams', icon: Users },
     { id: 'tasks', label: 'Tasks', icon: BookOpen },
-    { id: 'students', label: 'Students', icon: User },
+    { id: 'students', label: 'Students', icon: UserPlus },
     { id: 'analytics', label: 'Analytics', icon: BarChart3 },
     { id: 'calendar', label: 'Calendar', icon: Calendar },
     { id: 'messages', label: 'Messages', icon: MessageSquare },
@@ -151,32 +136,33 @@ import {
               </div>
               <div>
                 <h1 className="text-xl font-bold text-gray-800">
-                  Welcome, Dr. {user?.firstName || 'Faculty'}!
+                  Welcome, {user?.firstName || 'Faculty'}!
                 </h1>
-                <p className="text-sm text-gray-500">Faculty Dashboard</p>
+                <p className="text-gray-600">Manage your projects and students</p>
               </div>
             </div>
             
             <div className="flex items-center space-x-4">
               <div className="relative">
-                <Search className="w-6 h-6 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" />
-                <input
-                  type="text"
-                  placeholder="Search..."
-                  className="pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                <Search className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" />
+                <input 
+                  type="text" 
+                  placeholder="Search..." 
+                  className="pl-10 pr-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-purple-100 focus:border-purple-400"
                 />
               </div>
-              <div className="relative">
-                <Bell className="w-6 h-6 text-gray-600 cursor-pointer hover:text-purple-600" />
-                {notifications.some(n => n.unread) && (
-                  <span className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
-                    {notifications.filter(n => n.unread).length}
-                  </span>
-                )}
-              </div>
-              <button
+              
+              <button className="relative p-2 text-gray-600 hover:text-purple-600 hover:bg-purple-50 rounded-xl transition-colors duration-200">
+                <Bell className="w-6 h-6" />
+                <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
+                  {notifications.filter(n => n.unread).length}
+                </span>
+              </button>
+              
+              {/* ✅ Use context logout function */}
+              <button 
                 onClick={handleLogout}
-                className="flex items-center space-x-2 px-4 py-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors duration-200"
+                className="flex items-center space-x-2 text-gray-600 hover:text-red-600 hover:bg-red-50 px-4 py-2 rounded-xl transition-colors duration-200"
               >
                 <LogOut className="w-5 h-5" />
                 <span>Logout</span>
@@ -188,33 +174,31 @@ import {
 
       <div className="flex">
         {/* Sidebar */}
-        <aside className="w-64 bg-white h-screen sticky top-16 border-r border-gray-200">
+        <aside className="w-64 bg-white border-r border-gray-200 min-h-screen">
           <nav className="p-4">
-            <div className="space-y-2">
-              {sidebarItems.map((item) => {
-                const Icon = item.icon;
-                return (
+            <ul className="space-y-2">
+              {sidebarItems.map((item) => (
+                <li key={item.id}>
                   <button
-                    key={item.id}
                     onClick={() => setActiveTab(item.id)}
-                    className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-left transition-all duration-300 ${
+                    className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-left transition-all duration-200 ${
                       activeTab === item.id
-                        ? 'bg-gradient-to-r from-purple-500 to-indigo-600 text-white shadow-lg transform scale-105'
+                        ? 'bg-gradient-to-r from-purple-500 to-indigo-600 text-white shadow-lg'
                         : 'text-gray-600 hover:bg-purple-50 hover:text-purple-600'
                     }`}
                   >
-                    <Icon className="w-5 h-5" />
+                    <item.icon className="w-5 h-5" />
                     <span className="font-medium">{item.label}</span>
                   </button>
-                );
-              })}
-            </div>
+                </li>
+              ))}
+            </ul>
           </nav>
         </aside>
 
         {/* Main Content */}
         <main className="flex-1 p-6">
-          {activeTab === 'overview' && <OverviewTab analytics={analytics} notifications={notifications} />}
+          {activeTab === 'overview' && <OverviewTab notifications={notifications} analytics={analytics} />}
           {activeTab === 'servers' && <ServersTab projects={projects} setProjects={setProjects} />}
           {activeTab === 'teams' && <TeamsTab />}
           {activeTab === 'tasks' && <TasksTab />}
@@ -230,50 +214,93 @@ import {
 }
 
 // Overview Tab Component
-function OverviewTab({ analytics, notifications }) {
-  const stats = [
-    { label: 'Total Projects', value: analytics.totalProjects || 0, icon: Server, color: 'from-blue-500 to-cyan-500' },
-    { label: 'Total Students', value: analytics.totalStudents || 0, icon: User, color: 'from-green-500 to-emerald-500' },
-    { label: 'Active Tasks', value: analytics.activeTasks || 0, icon: Clock, color: 'from-yellow-500 to-orange-500' },
-    { label: 'Completion Rate', value: `${analytics.completionRate || 0}%`, icon: CheckCircle, color: 'from-purple-500 to-indigo-500' }
-  ];
-
+function OverviewTab({ notifications, analytics }) {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold text-gray-800 mb-2">Dashboard Overview</h2>
+        <h2 className="text-2xl font-bold text-gray-800">Faculty Dashboard</h2>
         <p className="text-gray-600">Monitor your projects and student progress</p>
       </div>
 
-      {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {stats.map((stat, index) => {
-          const Icon = stat.icon;
-          return (
-            <div key={index} className="bg-white rounded-2xl p-6 shadow-lg hover:shadow-xl transition-shadow duration-300">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-gray-500 text-sm font-medium">{stat.label}</p>
-                  <p className="text-3xl font-bold text-gray-800 mt-1">{stat.value}</p>
-                </div>
-                <div className={`w-12 h-12 bg-gradient-to-r ${stat.color} rounded-xl flex items-center justify-center`}>
-                  <Icon className="w-6 h-6 text-white" />
-                </div>
-              </div>
+        {/* Stats Cards */}
+        <div className="bg-gradient-to-r from-blue-500 to-cyan-500 rounded-2xl p-6 text-white">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-blue-100">Total Projects</p>
+              <p className="text-3xl font-bold">{analytics.totalProjects}</p>
             </div>
-          );
-        })}
+            <Server className="w-8 h-8 text-blue-200" />
+          </div>
+        </div>
+
+        <div className="bg-gradient-to-r from-green-500 to-emerald-500 rounded-2xl p-6 text-white">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-green-100">Total Students</p>
+              <p className="text-3xl font-bold">{analytics.totalStudents}</p>
+            </div>
+            <Users className="w-8 h-8 text-green-200" />
+          </div>
+        </div>
+
+        <div className="bg-gradient-to-r from-purple-500 to-indigo-500 rounded-2xl p-6 text-white">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-purple-100">Active Tasks</p>
+              <p className="text-3xl font-bold">{analytics.activeTasks}</p>
+            </div>
+            <BookOpen className="w-8 h-8 text-purple-200" />
+          </div>
+        </div>
+
+        <div className="bg-gradient-to-r from-orange-500 to-red-500 rounded-2xl p-6 text-white">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-orange-100">Completion Rate</p>
+              <p className="text-3xl font-bold">{analytics.completionRate}%</p>
+            </div>
+            <TrendingUp className="w-8 h-8 text-orange-200" />
+          </div>
+        </div>
       </div>
 
-      {/* Recent Activity & Quick Actions */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Recent Notifications */}
+        {/* Recent Activity */}
         <div className="bg-white rounded-2xl shadow-lg p-6">
           <h3 className="text-lg font-bold text-gray-800 mb-4">Recent Activity</h3>
           <div className="space-y-4">
-            {notifications.slice(0, 3).map((notification) => (
-              <div key={notification.id} className="flex items-start space-x-3 p-3 bg-gray-50 rounded-xl">
-                <div className={`w-3 h-3 rounded-full mt-2 ${notification.unread ? 'bg-blue-500' : 'bg-gray-300'}`}></div>
+            <div className="flex items-center space-x-3 p-3 bg-blue-50 rounded-xl">
+              <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+              <div>
+                <p className="text-sm font-medium text-gray-800">New student joined Web Dev Project</p>
+                <p className="text-xs text-gray-500">2 hours ago</p>
+              </div>
+            </div>
+            <div className="flex items-center space-x-3 p-3 bg-green-50 rounded-xl">
+              <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+              <div>
+                <p className="text-sm font-medium text-gray-800">Team Alpha submitted assignment</p>
+                <p className="text-xs text-gray-500">4 hours ago</p>
+              </div>
+            </div>
+            <div className="flex items-center space-x-3 p-3 bg-purple-50 rounded-xl">
+              <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
+              <div>
+                <p className="text-sm font-medium text-gray-800">Created new project server</p>
+                <p className="text-xs text-gray-500">1 day ago</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Notifications */}
+        <div className="bg-white rounded-2xl shadow-lg p-6">
+          <h3 className="text-lg font-bold text-gray-800 mb-4">Notifications</h3>
+          <div className="space-y-3">
+            {notifications.map((notification) => (
+              <div key={notification.id} className="flex items-start space-x-3 p-3 hover:bg-gray-50 rounded-xl transition-colors duration-200">
+                <div className={`w-2 h-2 rounded-full mt-2 ${notification.unread ? 'bg-blue-500' : 'bg-gray-300'}`}></div>
                 <div className="flex-1">
                   <h4 className="font-medium text-gray-800">{notification.title}</h4>
                   <p className="text-sm text-gray-600">{notification.message}</p>
@@ -307,16 +334,26 @@ function OverviewTab({ analytics, notifications }) {
   );
 }
 
-// Project Servers Tab Component
+// Project Servers Tab Component - ✅ Enhanced with better server creation
 function ServersTab({ projects, setProjects }) {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newServer, setNewServer] = useState({ title: '', description: '' });
   const [loading, setLoading] = useState(false);
   const [copiedCode, setCopiedCode] = useState('');
 
+  // ✅ Enhanced server creation with better UX
   const createServer = async (e) => {
     e.preventDefault();
-    if (!newServer.title.trim()) return;
+    
+    if (!newServer.title.trim()) {
+      alert('Project title is required');
+      return;
+    }
+    
+    if (newServer.title.trim().length < 3) {
+      alert('Project title must be at least 3 characters');
+      return;
+    }
 
     setLoading(true);
     
@@ -337,22 +374,31 @@ function ServersTab({ projects, setProjects }) {
         setProjects(prev => [data.server, ...prev]);
         setNewServer({ title: '', description: '' });
         setShowCreateModal(false);
-        alert('Project server created successfully!');
+        
+        // ✅ Show server code immediately and auto-copy
+        alert(`Project server created successfully!\n\nServer Code: ${data.server.code}\n\nThis code has been copied to your clipboard. Share it with your students.`);
+        
+        // ✅ Auto-copy code to clipboard
+        if (navigator.clipboard) {
+          navigator.clipboard.writeText(data.server.code);
+        }
       } else {
         alert(data.message || 'Failed to create server');
       }
     } catch (error) {
       console.error('Failed to create server:', error);
-      alert('Failed to create server');
+      alert('Failed to create server. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
   const copyServerCode = (code) => {
-    navigator.clipboard.writeText(code);
-    setCopiedCode(code);
-    setTimeout(() => setCopiedCode(''), 2000);
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(code);
+      setCopiedCode(code);
+      setTimeout(() => setCopiedCode(''), 2000);
+    }
   };
 
   const generateWhatsAppMessage = (server) => {
@@ -430,6 +476,7 @@ Happy coding! 💻`;
                   className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-purple-100 focus:border-purple-400"
                   placeholder="e.g., Web Development Project"
                   required
+                  disabled={loading}
                 />
               </div>
               <div>
@@ -440,6 +487,7 @@ Happy coding! 💻`;
                   className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-purple-100 focus:border-purple-400"
                   placeholder="Brief description of the project..."
                   rows={3}
+                  disabled={loading}
                 />
               </div>
               <div className="flex space-x-3">
@@ -447,13 +495,14 @@ Happy coding! 💻`;
                   type="button"
                   onClick={() => setShowCreateModal(false)}
                   className="flex-1 px-4 py-3 border border-gray-200 text-gray-600 rounded-xl hover:bg-gray-50 transition-colors duration-200"
+                  disabled={loading}
                 >
                   Cancel
                 </button>
                 <button 
                   type="submit"
-                  disabled={loading}
-                  className="flex-1 px-4 py-3 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-xl hover:from-purple-600 hover:to-indigo-700 transition-all duration-300 disabled:opacity-50"
+                  disabled={loading || !newServer.title.trim()}
+                  className="flex-1 px-4 py-3 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-xl hover:from-purple-600 hover:to-indigo-700 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {loading ? 'Creating...' : 'Create Server'}
                 </button>
@@ -466,57 +515,56 @@ Happy coding! 💻`;
       {/* Servers Grid */}
       {projects.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {projects.map((server) => (
-            <div key={server._id} className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-shadow duration-300">
-              <div className="flex items-center justify-between mb-4">
+          {projects.map((project) => (
+            <div key={project._id} className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-shadow duration-300">
+              <div className="flex items-start justify-between mb-4">
                 <div className="w-12 h-12 bg-gradient-to-r from-purple-500 to-indigo-600 rounded-xl flex items-center justify-center">
                   <Server className="w-6 h-6 text-white" />
                 </div>
                 <div className="flex items-center space-x-2">
                   <button
-                    onClick={() => copyServerCode(server.code)}
-                    className={`flex items-center space-x-1 px-3 py-1 rounded-lg text-xs font-mono transition-colors duration-200 ${
-                      copiedCode === server.code 
+                    onClick={() => copyServerCode(project.code)}
+                    className={`px-3 py-1 text-xs font-mono rounded-lg transition-colors duration-200 ${
+                      copiedCode === project.code 
                         ? 'bg-green-100 text-green-600' 
                         : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                     }`}
                   >
-                    <Copy className="w-3 h-3" />
-                    <span>{copiedCode === server.code ? 'Copied!' : server.code}</span>
+                    {copiedCode === project.code ? 'Copied!' : project.code}
                   </button>
                 </div>
               </div>
               
-              <h3 className="text-lg font-bold text-gray-800 mb-2">{server.title}</h3>
+              <h3 className="text-lg font-bold text-gray-800 mb-2">{project.title}</h3>
               <p className="text-gray-600 text-sm mb-4 line-clamp-2">
-                {server.description || 'No description available'}
+                {project.description || 'No description provided'}
               </p>
               
               <div className="flex items-center justify-between text-sm text-gray-500 mb-4">
-                <span>Created: {new Date(server.createdAt).toLocaleDateString()}</span>
-                <span className="flex items-center space-x-1">
-                  <Users className="w-4 h-4" />
-                  <span>0 students</span>
-                </span>
+                <span>Students: {project.studentCount || 0}</span>
+                <span>Created: {new Date(project.createdAt).toLocaleDateString()}</span>
               </div>
-              
+
               <div className="flex items-center space-x-2">
                 <button
-                  onClick={() => generateWhatsAppMessage(server)}
-                  className="flex-1 flex items-center justify-center space-x-2 px-3 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors duration-200"
+                  onClick={() => copyServerCode(project.code)}
+                  className="flex-1 flex items-center justify-center space-x-2 px-3 py-2 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors duration-200"
+                >
+                  <Copy className="w-4 h-4" />
+                  <span className="text-sm">Copy Code</span>
+                </button>
+                
+                <button
+                  onClick={() => generateWhatsAppMessage(project)}
+                  className="flex-1 flex items-center justify-center space-x-2 px-3 py-2 bg-green-50 hover:bg-green-100 text-green-600 rounded-lg transition-colors duration-200"
                 >
                   <Share2 className="w-4 h-4" />
-                  <span>Share</span>
+                  <span className="text-sm">Share</span>
                 </button>
-                <button className="px-3 py-2 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors duration-200">
-                  <Eye className="w-4 h-4" />
-                </button>
-                <button className="px-3 py-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors duration-200">
-                  <Edit className="w-4 h-4" />
-                </button>
-                <button 
-                  onClick={() => deleteServer(server._id)}
-                  className="px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors duration-200"
+                
+                <button
+                  onClick={() => deleteServer(project._id)}
+                  className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors duration-200"
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>

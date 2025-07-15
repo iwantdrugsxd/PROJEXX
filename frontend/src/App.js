@@ -56,19 +56,35 @@ function App() {
     }
   };
 
+  // ✅ FIXED: Dynamic logout based on user role
   const handleLogout = async () => {
     try {
-      await fetch(`${API_BASE}/faculty/logout`, {
+      // Use correct endpoint based on user role
+      const endpoint = user?.role === 'faculty' ? 'faculty' : 'student';
+      console.log(`Logging out ${endpoint}...`);
+      
+      const response = await fetch(`${API_BASE}/${endpoint}/logout`, {
         method: 'POST',
         credentials: 'include',
       });
+
+      if (response.ok) {
+        console.log('✅ Logout successful');
+      } else {
+        console.warn('⚠️ Logout response not OK, but proceeding with frontend logout');
+      }
+      
+      // Clear all client-side state
       setUser(null);
       setCurrentView('landing');
+      setUserType('student'); // Reset to default
+      
     } catch (error) {
       console.error('Logout failed:', error);
-      // Still logout on frontend even if backend call fails
+      // Force logout on frontend even if backend fails
       setUser(null);
       setCurrentView('landing');
+      setUserType('student');
     }
   };
 
@@ -95,7 +111,7 @@ function App() {
       setUserType, 
       currentView, 
       setCurrentView,
-      handleLogout  // Add logout function to context
+      handleLogout  // ✅ Provide logout function to all components
     }}>
       <div className="min-h-screen bg-white">
         {currentView === 'landing' && <LandingPage />}

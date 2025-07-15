@@ -22,7 +22,45 @@ const taskSchema = new mongoose.Schema({
     required: true,
     enum: ['Faculty', 'Student']
   },
-
+attachments: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'File'
+  }],
+  submissionText: {
+    type: String,
+    default: ""
+  },
+  submissionFiles: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'File'
+  }],
+  submittedAt: {
+    type: Date
+  },
+  submittedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    refPath: 'submitterModel'
+  },
+  submitterModel: {
+    type: String,
+    enum: ['Student', 'Faculty']
+  },
+  grade: {
+    type: Number,
+    min: 0,
+    max: 100
+  },
+  feedback: {
+    type: String,
+    default: ""
+  },
+  gradedAt: {
+    type: Date
+  },
+  gradedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Faculty'
+  },
   attachments: [
     {
       filename: String,
