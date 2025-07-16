@@ -1,3 +1,8 @@
+// 🔧 COMPLETE FIX FOR BOTH FRONTEND AND BACKEND
+
+// ===== 1. FRONTEND FIX: TaskCreator.jsx =====
+// Replace your TaskCreator component with this corrected version:
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
   X, 
@@ -17,22 +22,22 @@ import {
 } from 'lucide-react';
 
 const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
-  // Form state
- const [formData, setFormData] = useState({
-  title: '',
-  description: '',
-  dueDate: '',
-  maxPoints: 100,
-  assignmentType: 'team',
-  teamIds: [],
-  assignToAll: false,
-  allowLateSubmissions: false,
-  maxAttempts: 1,
-  allowFileUpload: true,
-  allowedFileTypes: ['pdf', 'doc', 'docx', 'txt', 'jpg', 'png', 'zip'], // ✅ FIXED: Direct array
-  maxFileSize: 10485760, // 10MB
-  priority: 'medium'
-});
+  // ✅ FIXED: Form state with EMPTY allowedFileTypes array
+  const [formData, setFormData] = useState({
+    title: '',
+    description: '',
+    dueDate: '',
+    maxPoints: 100,
+    assignmentType: 'team',
+    teamIds: [],
+    assignToAll: false,
+    allowLateSubmissions: false,
+    maxAttempts: 1,
+    allowFileUpload: true,
+    allowedFileTypes: [], // ✅ FIXED: Start with empty array
+    maxFileSize: 10485760, // 10MB
+    priority: 'medium'
+  });
 
   // UI state
   const [teams, setTeams] = useState([]);
@@ -44,14 +49,18 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
   // Constants
   const API_BASE = process.env.REACT_APP_API_BASE_URL || 'http://localhost:5000/api';
   
+  // ✅ FIXED: File types that exactly match backend schema
   const fileTypeOptions = [
     { value: 'pdf', label: 'PDF' },
     { value: 'doc', label: 'Word Doc' },
     { value: 'docx', label: 'Word Docx' },
     { value: 'txt', label: 'Text File' },
     { value: 'jpg', label: 'JPEG Image' },
+    { value: 'jpeg', label: 'JPEG Image (Alt)' },
     { value: 'png', label: 'PNG Image' },
-    { value: 'zip', label: 'ZIP Archive' }
+    { value: 'gif', label: 'GIF Image' },
+    { value: 'zip', label: 'ZIP Archive' },
+    { value: 'rar', label: 'RAR Archive' }
   ];
 
   const priorityOptions = [
@@ -107,11 +116,10 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
     }
   }, [serverId, API_BASE]);
 
-  // Validation functions
+  // ✅ FIXED: Validation with file types check
   const validateForm = () => {
     const newErrors = {};
 
-    // Title validation
     if (!formData.title.trim()) {
       newErrors.title = 'Task title is required';
     } else if (formData.title.trim().length < 3) {
@@ -120,7 +128,6 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
       newErrors.title = 'Title cannot exceed 200 characters';
     }
 
-    // Description validation
     if (!formData.description.trim()) {
       newErrors.description = 'Task description is required';
     } else if (formData.description.trim().length < 10) {
@@ -129,7 +136,6 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
       newErrors.description = 'Description cannot exceed 2000 characters';
     }
 
-    // Due date validation
     if (!formData.dueDate) {
       newErrors.dueDate = 'Due date is required';
     } else {
@@ -140,26 +146,28 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
       }
     }
 
-    // Team selection validation
     if (formData.assignmentType === 'team' && !formData.assignToAll && formData.teamIds.length === 0) {
       newErrors.teams = 'Please select at least one team or choose "Assign to All Teams"';
     }
 
-    // Points validation
     if (!formData.maxPoints || formData.maxPoints < 1 || formData.maxPoints > 1000) {
       newErrors.maxPoints = 'Points must be between 1 and 1000';
     }
 
-    // Attempts validation
     if (!formData.maxAttempts || formData.maxAttempts < 1 || formData.maxAttempts > 10) {
       newErrors.maxAttempts = 'Maximum attempts must be between 1 and 10';
+    }
+
+    // ✅ FIXED: File types validation
+    if (formData.allowFileUpload && formData.allowedFileTypes.length === 0) {
+      newErrors.allowedFileTypes = 'Please select at least one allowed file type when file upload is enabled';
     }
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
-  // Form handlers
+  // ✅ FIXED: Form handlers
   const handleInputChange = (e) => {
     const { name, value, type, checked } = e.target;
     
@@ -177,6 +185,11 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
           ? [...prev.allowedFileTypes, value]
           : prev.allowedFileTypes.filter(type => type !== value)
       }));
+      
+      // Clear error when user selects file types
+      if (checked && errors.allowedFileTypes) {
+        setErrors(prev => ({ ...prev, allowedFileTypes: null }));
+      }
     } else {
       setFormData(prev => ({
         ...prev,
@@ -208,8 +221,11 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
     }));
   };
 
+  // ✅ FIXED: Submit handler
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    console.log('🔍 Form submission - allowedFileTypes:', formData.allowedFileTypes);
     
     if (!validateForm()) {
       return;
@@ -230,10 +246,12 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
         allowLateSubmissions: formData.allowLateSubmissions,
         maxAttempts: parseInt(formData.maxAttempts),
         allowFileUpload: formData.allowFileUpload,
-        allowedFileTypes: formData.allowedFileTypes,
+        allowedFileTypes: formData.allowedFileTypes, // ✅ This should work now
         maxFileSize: formData.maxFileSize,
         priority: formData.priority
       };
+
+      console.log('🚀 Sending request:', requestBody);
 
       const response = await fetch(`${API_BASE}/tasks/create`, {
         method: 'POST',
@@ -268,45 +286,31 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
         {/* Header */}
-        <div className="bg-gradient-to-r from-purple-600 to-indigo-600 px-6 py-4 text-white">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-xl font-bold">Create New Task</h2>
-              <p className="text-purple-100 text-sm">{serverTitle}</p>
-            </div>
-            <button
-              onClick={onClose}
-              className="p-2 hover:bg-white hover:bg-opacity-20 rounded-lg transition-colors"
-            >
-              <X className="w-5 h-5" />
-            </button>
+        <div className="sticky top-0 bg-white border-b px-6 py-4 flex items-center justify-between">
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900">Create New Task</h2>
+            <p className="text-sm text-gray-600">Server: {serverTitle}</p>
           </div>
+          <button
+            onClick={onClose}
+            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
         </div>
 
         {/* Content */}
-        <div className="overflow-y-auto max-h-[calc(90vh-80px)]">
-          <div className="p-6 space-y-6">
-            {/* Error Display */}
-            {errors.submit && (
-              <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-start">
-                <AlertCircle className="w-5 h-5 text-red-500 mt-0.5 mr-3 flex-shrink-0" />
-                <div>
-                  <h4 className="text-red-800 font-medium">Error</h4>
-                  <p className="text-red-700 text-sm mt-1">{errors.submit}</p>
-                </div>
-              </div>
-            )}
-
+        <div className="p-6">
+          <form onSubmit={handleSubmit} className="space-y-6">
             {/* Basic Information */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Task Title */}
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   <FileText className="w-4 h-4 inline mr-2" />
-                  Task Title *
+                  Task Title
                 </label>
                 <input
                   type="text"
@@ -317,23 +321,35 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
                   className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors ${
                     errors.title ? 'border-red-300 bg-red-50' : 'border-gray-300'
                   }`}
-                  maxLength={200}
                 />
-                <div className="flex justify-between mt-1">
-                  {errors.title && (
-                    <p className="text-red-600 text-sm">{errors.title}</p>
-                  )}
-                  <p className="text-gray-500 text-sm ml-auto">
-                    {formData.title.length}/200
-                  </p>
-                </div>
+                {errors.title && (
+                  <p className="text-red-600 text-sm mt-1">{errors.title}</p>
+                )}
               </div>
 
-              {/* Due Date */}
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Description
+                </label>
+                <textarea
+                  name="description"
+                  value={formData.description}
+                  onChange={handleInputChange}
+                  rows={4}
+                  placeholder="Describe the task requirements..."
+                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors resize-none ${
+                    errors.description ? 'border-red-300 bg-red-50' : 'border-gray-300'
+                  }`}
+                />
+                {errors.description && (
+                  <p className="text-red-600 text-sm mt-1">{errors.description}</p>
+                )}
+              </div>
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   <Calendar className="w-4 h-4 inline mr-2" />
-                  Due Date *
+                  Due Date
                 </label>
                 <input
                   type="datetime-local"
@@ -341,7 +357,7 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
                   value={formData.dueDate}
                   onChange={handleInputChange}
                   min={getMinDate()}
-                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors ${
+                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent ${
                     errors.dueDate ? 'border-red-300 bg-red-50' : 'border-gray-300'
                   }`}
                 />
@@ -350,11 +366,10 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
                 )}
               </div>
 
-              {/* Max Points */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   <Award className="w-4 h-4 inline mr-2" />
-                  Maximum Points *
+                  Maximum Points
                 </label>
                 <input
                   type="number"
@@ -363,7 +378,7 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
                   onChange={handleInputChange}
                   min="1"
                   max="1000"
-                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors ${
+                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent ${
                     errors.maxPoints ? 'border-red-300 bg-red-50' : 'border-gray-300'
                   }`}
                 />
@@ -371,67 +386,70 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
                   <p className="text-red-600 text-sm mt-1">{errors.maxPoints}</p>
                 )}
               </div>
-            </div>
 
-            {/* Task Description */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Task Description *
-              </label>
-              <textarea
-                name="description"
-                value={formData.description}
-                onChange={handleInputChange}
-                placeholder="Provide detailed instructions for the task..."
-                rows={5}
-                className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors resize-none ${
-                  errors.description ? 'border-red-300 bg-red-50' : 'border-gray-300'
-                }`}
-                maxLength={2000}
-              />
-              <div className="flex justify-between mt-1">
-                {errors.description && (
-                  <p className="text-red-600 text-sm">{errors.description}</p>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Priority Level
+                </label>
+                <select
+                  name="priority"
+                  value={formData.priority}
+                  onChange={handleInputChange}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                >
+                  {priorityOptions.map(option => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Maximum Attempts
+                </label>
+                <input
+                  type="number"
+                  name="maxAttempts"
+                  value={formData.maxAttempts}
+                  onChange={handleInputChange}
+                  min="1"
+                  max="10"
+                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent ${
+                    errors.maxAttempts ? 'border-red-300 bg-red-50' : 'border-gray-300'
+                  }`}
+                />
+                {errors.maxAttempts && (
+                  <p className="text-red-600 text-sm mt-1">{errors.maxAttempts}</p>
                 )}
-                <p className="text-gray-500 text-sm ml-auto">
-                  {formData.description.length}/2000
-                </p>
               </div>
             </div>
 
             {/* Team Assignment */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-3">
-                <Users className="w-4 h-4 inline mr-2" />
-                Team Assignment *
-              </label>
-              
-              {loadingTeams ? (
-                <div className="flex items-center justify-center py-8 bg-gray-50 rounded-lg">
-                  <Loader2 className="w-6 h-6 animate-spin mr-3" />
-                  <span className="text-gray-600">Loading teams...</span>
-                </div>
-              ) : errors.teams ? (
-                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                  <div className="flex items-start">
-                    <AlertCircle className="w-5 h-5 text-yellow-500 mt-0.5 mr-3 flex-shrink-0" />
-                    <div>
-                      <p className="text-yellow-800 font-medium">No Teams Available</p>
-                      <p className="text-yellow-700 text-sm mt-1">{errors.teams}</p>
-                      <button
-                        type="button"
-                        onClick={loadTeams}
-                        className="mt-2 text-yellow-600 hover:text-yellow-800 text-sm font-medium"
-                      >
-                        Retry Loading Teams
-                      </button>
+            {loadingTeams ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="w-6 h-6 animate-spin text-purple-600 mr-2" />
+                <span className="text-gray-600">Loading teams...</span>
+              </div>
+            ) : (
+              <div className="bg-gray-50 rounded-lg p-6">
+                <label className="block text-sm font-medium text-gray-700 mb-4">
+                  <Users className="w-4 h-4 inline mr-2" />
+                  Team Assignment
+                </label>
+
+                {errors.teams && (
+                  <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+                    <div className="flex items-center text-red-800">
+                      <AlertCircle className="w-4 h-4 mr-2 flex-shrink-0" />
+                      <span className="text-sm">{errors.teams}</span>
                     </div>
                   </div>
-                </div>
-              ) : (
+                )}
+
                 <div className="space-y-4">
-                  {/* Assignment Options */}
-                  <div className="flex flex-wrap gap-4">
+                  <div className="flex items-center space-x-4">
                     <label className="flex items-center cursor-pointer">
                       <input
                         type="radio"
@@ -440,9 +458,9 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
                         onChange={handleSelectAllTeams}
                         className="mr-2 text-purple-600"
                       />
-                      <span className="text-sm font-medium">Assign to All Teams ({teams.length})</span>
+                      <span className="text-sm font-medium">Assign to All Teams</span>
                     </label>
-                    
+                   
                     <label className="flex items-center cursor-pointer">
                       <input
                         type="radio"
@@ -457,7 +475,7 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
 
                   {/* Team Selection */}
                   {!formData.assignToAll && (
-                    <div className="border rounded-lg p-4 bg-gray-50 max-h-48 overflow-y-auto">
+                    <div className="border rounded-lg p-4 bg-white max-h-48 overflow-y-auto">
                       <div className="space-y-3">
                         {teams.map(team => (
                           <label key={team._id} className="flex items-start cursor-pointer group">
@@ -471,20 +489,17 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
                             />
                             <div className="flex-1">
                               <div className="flex items-center justify-between">
-                                <span className="font-medium text-gray-900 group-hover:text-purple-600 transition-colors">
+                                <span className="font-medium text-gray-900 group-hover:text-purple-600">
                                   {team.name}
                                 </span>
                                 <span className="text-sm text-gray-500">
                                   {team.members?.length || 0} members
                                 </span>
                               </div>
-                              {team.members && team.members.length > 0 && (
-                                <div className="text-sm text-gray-600 mt-1">
-                                  {team.members.slice(0, 3).map(member => 
-                                    `${member.firstName} ${member.lastName}`
-                                  ).join(', ')}
-                                  {team.members.length > 3 && ` +${team.members.length - 3} more`}
-                                </div>
+                              {team.description && (
+                                <p className="text-sm text-gray-600 mt-1">
+                                  {team.description}
+                                </p>
                               )}
                             </div>
                           </label>
@@ -493,84 +508,29 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
                     </div>
                   )}
                 </div>
-              )}
-            </div>
+              </div>
+            )}
 
-            {/* Advanced Settings Toggle */}
-            <div className="border-t pt-6">
-              <button
-                type="button"
-                onClick={() => setShowAdvanced(!showAdvanced)}
-                className="flex items-center text-gray-700 hover:text-purple-600 transition-colors"
-              >
-                {showAdvanced ? <Minus className="w-4 h-4 mr-2" /> : <Plus className="w-4 h-4 mr-2" />}
-                Advanced Settings
-              </button>
-            </div>
-
-            {/* Advanced Settings */}
-            {showAdvanced && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-gray-50 p-6 rounded-lg">
-                {/* Priority */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    <Target className="w-4 h-4 inline mr-2" />
-                    Priority
-                  </label>
-                  <select
-                    name="priority"
-                    value={formData.priority}
-                    onChange={handleInputChange}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                  >
-                    {priorityOptions.map(option => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Max Attempts */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Maximum Attempts
-                  </label>
-                  <input
-                    type="number"
-                    name="maxAttempts"
-                    value={formData.maxAttempts}
-                    onChange={handleInputChange}
-                    min="1"
-                    max="10"
-                    className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent ${
-                      errors.maxAttempts ? 'border-red-300 bg-red-50' : 'border-gray-300'
-                    }`}
-                  />
-                  {errors.maxAttempts && (
-                    <p className="text-red-600 text-sm mt-1">{errors.maxAttempts}</p>
-                  )}
-                </div>
-
+            {/* File Upload Settings */}
+            <div className="bg-gray-50 rounded-lg p-6">
+              <div className="space-y-4">
                 {/* Late Submissions */}
-                <div className="md:col-span-2">
-                  <label className="flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      name="allowLateSubmissions"
-                      checked={formData.allowLateSubmissions}
-                      onChange={handleInputChange}
-                      className="mr-3 text-purple-600"
-                    />
-                    <div>
-                      <span className="font-medium text-gray-700">Allow Late Submissions</span>
-                      <p className="text-sm text-gray-500">Students can submit after the due date</p>
-                    </div>
-                  </label>
-                </div>
+                <label className="flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    name="allowLateSubmissions"
+                    checked={formData.allowLateSubmissions}
+                    onChange={handleInputChange}
+                    className="mr-3 text-purple-600"
+                  />
+                  <div>
+                    <span className="font-medium text-gray-700">Allow Late Submissions</span>
+                    <p className="text-sm text-gray-500">Students can submit after the due date</p>
+                  </div>
+                </label>
 
                 {/* File Upload Settings */}
-                <div className="md:col-span-2">
+                <div>
                   <label className="flex items-center cursor-pointer mb-4">
                     <input
                       type="checkbox"
@@ -586,11 +546,12 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
                     <div className="ml-6 space-y-4">
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Allowed File Types
+                          Allowed File Types ({formData.allowedFileTypes.length} selected)
                         </label>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                        
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                           {fileTypeOptions.map(option => (
-                            <label key={option.value} className="flex items-center cursor-pointer">
+                            <label key={option.value} className="flex items-center cursor-pointer p-2 border rounded hover:bg-gray-50">
                               <input
                                 type="checkbox"
                                 name="allowedFileTypes"
@@ -603,6 +564,10 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
                             </label>
                           ))}
                         </div>
+                        
+                        {errors.allowedFileTypes && (
+                          <p className="text-red-600 text-sm mt-2">{errors.allowedFileTypes}</p>
+                        )}
                       </div>
 
                       <div>
@@ -623,6 +588,16 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
                       </div>
                     </div>
                   )}
+                </div>
+              </div>
+            </div>
+
+            {/* Submit Error */}
+            {errors.submit && (
+              <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+                <div className="flex items-center text-red-800">
+                  <AlertCircle className="w-5 h-5 mr-2 flex-shrink-0" />
+                  <span className="text-sm">{errors.submit}</span>
                 </div>
               </div>
             )}
@@ -656,7 +631,7 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
                 )}
               </button>
             </div>
-          </div>
+          </form>
         </div>
       </div>
     </div>

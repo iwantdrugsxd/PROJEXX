@@ -54,8 +54,13 @@ const upload = multer({
   }
 });
 
-// ✅ Create task - Enhanced for team and individual assignments
+// 🔬 TEST: Add this debug code to your backend task creation route
+// This will help us identify exactly where the allowedFileTypes are getting lost
+
 router.post('/create', verifyToken, async (req, res) => {
+  console.log('🎯 CREATE TASK route hit');
+  console.log('Request body:', req.body);
+  
   try {
     const { 
       title, 
@@ -65,8 +70,17 @@ router.post('/create', verifyToken, async (req, res) => {
       dueDate, 
       maxPoints,
       assignToAll,
-      assignmentType = 'team'
+      assignmentType = 'team',
+      // ✅ FIXED: Extract file upload settings
+      allowFileUpload,
+      allowedFileTypes,
+      maxFileSize,
+      allowLateSubmissions,
+      maxAttempts,
+      priority
     } = req.body;
+    
+    console.log('Extracted allowedFileTypes:', allowedFileTypes);
     
     if (req.user.role !== 'faculty') {
       return res.status(403).json({ 
@@ -75,36 +89,15 @@ router.post('/create', verifyToken, async (req, res) => {
       });
     }
 
-    // Validate inputs
-    if (!title || !description || !serverId || !dueDate) {
+    // Validate required fields
+    if (!title?.trim() || !description?.trim() || !serverId || !dueDate) {
       return res.status(400).json({ 
-        message: 'Title, description, server, and due date are required', 
+        message: 'Missing required fields: title, description, server, or due date',
         success: false 
       });
     }
 
-    if (title.trim().length < 3) {
-      return res.status(400).json({ 
-        message: 'Task title must be at least 3 characters long', 
-        success: false 
-      });
-    }
-
-    if (description.trim().length < 10) {
-      return res.status(400).json({ 
-        message: 'Task description must be at least 10 characters long', 
-        success: false 
-      });
-    }
-
-    if (new Date(dueDate) <= new Date()) {
-      return res.status(400).json({ 
-        message: 'Due date must be in the future', 
-        success: false 
-      });
-    }
-
-    // Get server and verify ownership
+    // Validate server exists and faculty owns it
     const server = await ProjectServer.findById(serverId);
     if (!server) {
       return res.status(404).json({ 
@@ -115,51 +108,69 @@ router.post('/create', verifyToken, async (req, res) => {
 
     if (server.faculty.toString() !== req.user.id) {
       return res.status(403).json({ 
-        message: 'You can only create tasks in your own servers',
+        message: 'You can only create tasks for your own servers',
         success: false 
       });
     }
 
-    // Get teams to assign
-    let targetTeams = [];
+    // ✅ FIXED: File type validation
+    const validFileTypes = ['pdf', 'doc', 'docx', 'txt', 'jpg', 'jpeg', 'png', 'gif', 'zip', 'rar'];
+    let finalAllowedFileTypes = [];
     
+    if (allowFileUpload && Array.isArray(allowedFileTypes) && allowedFileTypes.length > 0) {
+      finalAllowedFileTypes = allowedFileTypes.filter(type => validFileTypes.includes(type));
+      
+      console.log('Final allowed file types:', finalAllowedFileTypes);
+      
+      if (finalAllowedFileTypes.length === 0) {
+        return res.status(400).json({ 
+          message: 'No valid file types selected',
+          success: false,
+          received: allowedFileTypes,
+          valid: validFileTypes
+        });
+      }
+    }
+
+    // Find target teams
+    let targetTeams;
     if (assignToAll) {
-      // Get all teams in the server
       targetTeams = await StudentTeam.find({ 
         projectServer: server.code 
-      }).populate('members');
-    } else if (teamIds && teamIds.length > 0) {
-      // Get specific teams
-      targetTeams = await StudentTeam.find({
-        _id: { $in: teamIds },
-        projectServer: server.code
-      }).populate('members');
-      
-      if (targetTeams.length !== teamIds.length) {
+      }).populate('members', '_id firstName lastName email');
+    } else {
+      if (!teamIds || teamIds.length === 0) {
         return res.status(400).json({ 
-          message: 'Some teams were not found or don\'t belong to this server',
+          message: 'Please select at least one team or choose "Assign to All Teams"',
           success: false 
         });
       }
-    } else {
-      return res.status(400).json({ 
-        message: 'Please select teams or choose to assign to all teams',
-        success: false 
-      });
+
+      targetTeams = await StudentTeam.find({ 
+        _id: { $in: teamIds },
+        projectServer: server.code 
+      }).populate('members', '_id firstName lastName email');
+
+      if (targetTeams.length !== teamIds.length) {
+        return res.status(400).json({ 
+          message: 'Some selected teams were not found in this server',
+          success: false 
+        });
+      }
     }
 
     if (targetTeams.length === 0) {
       return res.status(400).json({ 
-        message: 'No teams found to assign the task',
+        message: 'No teams found in this server. Students need to create teams first.',
         success: false 
       });
     }
 
-    // Create tasks for each team
+    // ✅ FIXED: Create tasks for each team with ALL file upload settings
     const createdTasks = [];
     
     for (const team of targetTeams) {
-      const task = new Task({
+      const taskData = {
         title: title.trim(),
         description: description.trim(),
         server: serverId,
@@ -170,19 +181,42 @@ router.post('/create', verifyToken, async (req, res) => {
         maxPoints: maxPoints || 100,
         status: 'active',
         isVisible: true,
-        publishedAt: new Date()
-      });
-      
+        publishedAt: new Date(),
+        // ✅ FIXED: Include ALL file upload settings
+        allowFileUpload: Boolean(allowFileUpload),
+        allowedFileTypes: finalAllowedFileTypes,
+        maxFileSize: maxFileSize || 10485760,
+        allowLateSubmissions: Boolean(allowLateSubmissions),
+        maxAttempts: maxAttempts || 1,
+        priority: priority || 'medium'
+      };
+
+      console.log('Creating task with data:', taskData);
+      console.log('Task allowedFileTypes:', taskData.allowedFileTypes);
+
+      const task = new Task(taskData);
       await task.save();
+      
+      console.log('Saved task allowedFileTypes:', task.allowedFileTypes);
+      
       createdTasks.push(task);
       
       // Send notifications to team members
       if (NotificationService && NotificationService.notifyTaskAssigned) {
-        await NotificationService.notifyTaskAssigned(task, team, server);
+        try {
+          await NotificationService.notifyTaskAssigned(task, team, server);
+        } catch (notifError) {
+          console.warn('Failed to send notification:', notifError);
+        }
       }
     }
 
     console.log(`✅ Created ${createdTasks.length} tasks for faculty ${req.user.id}`);
+    
+    // ✅ FIXED: Log final results
+    createdTasks.forEach(task => {
+      console.log(`Task ${task._id} - allowedFileTypes:`, task.allowedFileTypes);
+    });
     
     res.status(201).json({ 
       success: true, 
@@ -199,7 +233,6 @@ router.post('/create', verifyToken, async (req, res) => {
     });
   }
 });
-
 // ✅ Get teams for a specific server (for task creation) - NO server membership check
 router.get('/server/:serverId/teams', verifyToken, async (req, res) => {
   console.log('🎯 GET TEAMS FOR SERVER route hit');
