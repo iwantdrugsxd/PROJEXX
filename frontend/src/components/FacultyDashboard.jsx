@@ -24,19 +24,21 @@ import {
   Trash2,
   Edit,
   Eye,
-  Share2
+  Share2,
+  X,
+  Check
 } from 'lucide-react';
 
-// ✅ NEW: Import the actual functional components
+// Import the actual functional components
 import TaskList from './TaskManagement/TaskList';
 import CalendarView from './Calendar/CalendarView';
-import MessagingSystem from './Messaging/MessagingSystem.jsx';
+import MessagingSystem from './Messaging/MessagingSystem';
 import SettingsPage from './Settings/SettingsPage';
+import QuickTaskCreator from './QuickTaskCreator';
 
-import QuickTaskCreator from './TaskManagement/QuickTaskCreator';
 function FacultyDashboard() {
-  // ✅ Use logout from context instead of local implementation
- const { user, setUser, setCurrentView, handleLogout } = useContext(AuthContext);
+  // Use logout from context instead of local implementation
+  const { user, setUser, setCurrentView, handleLogout } = useContext(AuthContext);
   
   const [activeTab, setActiveTab] = useState('overview');
   const [loading, setLoading] = useState(true);
@@ -44,10 +46,7 @@ function FacultyDashboard() {
   const [students, setStudents] = useState([]);
   const [analytics, setAnalytics] = useState({});
   const [notifications, setNotifications] = useState([]);
-{activeTab === 'tasks' && <TaskList userRole="faculty" userId={user?.id} />}
-{activeTab === 'calendar' && <CalendarView userRole="faculty" userId={user?.id} />}
-{activeTab === 'messages' && <MessagingSystem userRole="faculty" userId={user?.id} user={user} />}
-{activeTab === 'settings' && <SettingsPage user={user} userRole="faculty" onUserUpdate={setUser} />}
+
   useEffect(() => {
     loadDashboardData();
   }, []);
@@ -169,7 +168,7 @@ function FacultyDashboard() {
                 </span>
               </button>
               
-              {/* ✅ Use context logout function */}
+              {/* Use context logout function */}
               <button 
                 onClick={handleLogout}
                 className="flex items-center space-x-2 text-gray-600 hover:text-red-600 hover:bg-red-50 px-4 py-2 rounded-xl transition-colors duration-200"
@@ -211,16 +210,9 @@ function FacultyDashboard() {
           {activeTab === 'overview' && <OverviewTab analytics={analytics} notifications={notifications} />}
           {activeTab === 'servers' && <ServersTab projects={projects} setProjects={setProjects} />}
           {activeTab === 'teams' && <TeamsTab />}
+          {activeTab === 'tasks' && <TasksTab projects={projects} />}
           {activeTab === 'students' && <StudentsTab students={students} />}
           {activeTab === 'analytics' && <AnalyticsTab analytics={analytics} projects={projects} />}
-          
-          {/* ✅ NEW: Replace placeholder components with actual functional ones */}
-          {activeTab === 'tasks' && (
-            <TaskList 
-              userRole="faculty" 
-              userId={user?.id} 
-            />
-          )}
           {activeTab === 'calendar' && (
             <CalendarView 
               userRole="faculty" 
@@ -344,38 +336,38 @@ function OverviewTab({ notifications, analytics }) {
             ))}
           </div>
         </div>
+      </div>
 
-        {/* Quick Actions */}
-        <div className="bg-white rounded-2xl shadow-lg p-6">
-          <h3 className="text-lg font-bold text-gray-800 mb-4">Quick Actions</h3>
-          <div className="space-y-3">
-            <button className="w-full flex items-center space-x-3 p-4 bg-purple-50 hover:bg-purple-100 rounded-xl transition-colors duration-200">
-              <Plus className="w-5 h-5 text-purple-600" />
-              <span className="text-purple-600 font-medium">Create New Project</span>
-            </button>
-            <button className="w-full flex items-center space-x-3 p-4 bg-green-50 hover:bg-green-100 rounded-xl transition-colors duration-200">
-              <BookOpen className="w-5 h-5 text-green-600" />
-              <span className="text-green-600 font-medium">Assign Task</span>
-            </button>
-            <button className="w-full flex items-center space-x-3 p-4 bg-blue-50 hover:bg-blue-100 rounded-xl transition-colors duration-200">
-              <BarChart3 className="w-5 h-5 text-blue-600" />
-              <span className="text-blue-600 font-medium">View Analytics</span>
-            </button>
-          </div>
+      {/* Quick Actions */}
+      <div className="bg-white rounded-2xl shadow-lg p-6">
+        <h3 className="text-lg font-bold text-gray-800 mb-4">Quick Actions</h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <button className="flex items-center space-x-3 p-4 bg-purple-50 hover:bg-purple-100 rounded-xl transition-colors duration-200">
+            <Plus className="w-5 h-5 text-purple-600" />
+            <span className="text-purple-600 font-medium">Create New Project</span>
+          </button>
+          <button className="flex items-center space-x-3 p-4 bg-green-50 hover:bg-green-100 rounded-xl transition-colors duration-200">
+            <BookOpen className="w-5 h-5 text-green-600" />
+            <span className="text-green-600 font-medium">Assign Task</span>
+          </button>
+          <button className="flex items-center space-x-3 p-4 bg-blue-50 hover:bg-blue-100 rounded-xl transition-colors duration-200">
+            <BarChart3 className="w-5 h-5 text-blue-600" />
+            <span className="text-blue-600 font-medium">View Analytics</span>
+          </button>
         </div>
       </div>
     </div>
   );
 }
 
-// Project Servers Tab Component - ✅ Enhanced with better server creation
+// Project Servers Tab Component - Enhanced with better server creation
 function ServersTab({ projects, setProjects }) {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newServer, setNewServer] = useState({ title: '', description: '' });
   const [loading, setLoading] = useState(false);
   const [copiedCode, setCopiedCode] = useState('');
 
-  // ✅ Enhanced server creation with better UX
+  // Enhanced server creation with better UX
   const createServer = async (e) => {
     e.preventDefault();
     
@@ -409,10 +401,10 @@ function ServersTab({ projects, setProjects }) {
         setNewServer({ title: '', description: '' });
         setShowCreateModal(false);
         
-        // ✅ Show server code immediately and auto-copy
+        // Show server code immediately and auto-copy
         alert(`Project server created successfully!\n\nServer Code: ${data.server.code}\n\nThis code has been copied to your clipboard. Share it with your students.`);
         
-        // ✅ Auto-copy code to clipboard
+        // Auto-copy code to clipboard
         if (navigator.clipboard) {
           navigator.clipboard.writeText(data.server.code);
         }
@@ -499,7 +491,16 @@ Happy coding! 💻`;
       {showCreateModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-2xl p-6 w-full max-w-md mx-4">
-            <h3 className="text-xl font-bold text-gray-800 mb-4">Create Project Server</h3>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold text-gray-800">Create Project Server</h3>
+              <button
+                onClick={() => setShowCreateModal(false)}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
             <form onSubmit={createServer} className="space-y-4">
               <div>
                 <label className="block text-gray-700 font-medium mb-2">Project Title</label>
@@ -644,7 +645,6 @@ function TeamsTab() {
 }
 
 // Tasks Tab Component
-// Replace the existing TasksTab function with this:
 function TasksTab({ projects }) {
   const [selectedProject, setSelectedProject] = useState(null);
 
@@ -676,7 +676,7 @@ function TasksTab({ projects }) {
                   <p className="text-gray-600 text-sm mt-1">{project.description}</p>
                   <div className="flex items-center justify-between mt-4">
                     <span className="text-sm text-gray-500">
-                      {project.students?.length || 0} students
+                      {project.studentCount || 0} students
                     </span>
                     <span className="text-purple-600 text-sm font-medium">
                       Manage Tasks →
@@ -701,18 +701,22 @@ function TasksTab({ projects }) {
               <p className="text-gray-600">Task Management</p>
             </div>
           </div>
+          
+          <div className="mb-6">
             <QuickTaskCreator 
-  onTaskCreated={(task) => {
-    console.log('Task created:', task);
-    // Optionally refresh any task lists
-  }}
-/>
+              serverId={selectedProject._id}
+              onTaskCreated={(task) => {
+                console.log('Task created:', task);
+                // Optionally refresh any task lists
+              }}
+            />
+          </div>
+          
           <TaskList 
             serverId={selectedProject._id} 
             userRole="faculty" 
             userId={null} 
           />
-          
         </div>
       )}
     </div>
@@ -781,66 +785,6 @@ function AnalyticsTab({ analytics, projects }) {
           <BarChart3 className="w-16 h-16 text-gray-300 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-gray-600 mb-2">Advanced Analytics Coming Soon</h3>
           <p className="text-gray-500">Detailed analytics and reporting will be available in the next update</p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// Calendar Tab Component
-function CalendarTab() {
-  return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold text-gray-800">Calendar</h2>
-        <p className="text-gray-600">Manage deadlines and schedule events</p>
-      </div>
-
-      <div className="bg-white rounded-2xl shadow-lg p-6">
-        <div className="text-center py-12">
-          <Calendar className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-600 mb-2">Calendar Coming Soon</h3>
-          <p className="text-gray-500">Calendar functionality will be available in the next update</p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// Messages Tab Component
-function MessagesTab() {
-  return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold text-gray-800">Messages</h2>
-        <p className="text-gray-600">Communicate with students and teams</p>
-      </div>
-
-      <div className="bg-white rounded-2xl shadow-lg p-6">
-        <div className="text-center py-12">
-          <MessageSquare className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-600 mb-2">Messages Coming Soon</h3>
-          <p className="text-gray-500">Messaging functionality will be available in the next update</p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// Settings Tab Component
-function SettingsTab({ user }) {
-  return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold text-gray-800">Settings</h2>
-        <p className="text-gray-600">Manage your account and preferences</p>
-      </div>
-
-      <div className="bg-white rounded-2xl shadow-lg p-6">
-        <div className="text-center py-12">
-          <Settings className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-600 mb-2">Settings Coming Soon</h3>
-          <p className="text-gray-500">Account settings will be available in the next update</p>
         </div>
       </div>
     </div>

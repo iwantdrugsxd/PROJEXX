@@ -8,6 +8,7 @@ const verifyToken = require("../middleware/verifyToken");
 console.log("🔧 teamRoutes.js loaded");
 
 // ✅ Enhanced team creation with better validation
+// ✅ Enhanced team creation - ALLOWS creation without server membership
 router.post("/createTeam", verifyToken, async (req, res) => {
   try {
     const { name, projectServerCode, memberEmails } = req.body;
@@ -62,7 +63,10 @@ router.post("/createTeam", verifyToken, async (req, res) => {
       });
     }
 
-    // ✅ Verify team creator is member of the project server
+    // ✅ REMOVED: Server membership requirement for team creator
+    // Students can now create teams without being server members
+    // The old validation is commented out below:
+    /*
     const creatorStudent = await Student.findOne({
       _id: req.user.id,
       joinedServers: projectServer._id
@@ -71,6 +75,16 @@ router.post("/createTeam", verifyToken, async (req, res) => {
     if (!creatorStudent) {
       return res.status(403).json({ 
         message: "You must be a member of this project server to create teams",
+        success: false 
+      });
+    }
+    */
+
+    // ✅ Just verify the creator exists (no server membership required)
+    const creatorStudent = await Student.findById(req.user.id);
+    if (!creatorStudent) {
+      return res.status(404).json({ 
+        message: "Student not found",
         success: false 
       });
     }
@@ -90,23 +104,9 @@ router.post("/createTeam", verifyToken, async (req, res) => {
       });
     }
 
-    // ✅ Verify all students are members of the project server
+    // ✅ MODIFIED: No longer require all students to be server members
+    // Allow team creation with any valid student accounts
     const studentIds = students.map(s => s._id);
-    const studentsInServer = await Student.find({
-      _id: { $in: studentIds },
-      joinedServers: projectServer._id
-    });
-
-    if (studentsInServer.length !== students.length) {
-      const studentsInServerIds = studentsInServer.map(s => s._id.toString());
-      const studentsNotInServer = students.filter(s => !studentsInServerIds.includes(s._id.toString()));
-      const notInServerEmails = studentsNotInServer.map(s => s.email);
-      
-      return res.status(403).json({ 
-        message: `These students are not members of the project server: ${notInServerEmails.join(", ")}`,
-        success: false 
-      });
-    }
 
     // ✅ Check for duplicate team names in the same project server
     const existingTeam = await StudentTeam.findOne({ 
@@ -166,15 +166,23 @@ router.post("/createTeam", verifyToken, async (req, res) => {
       { $addToSet: { joinedTeams: newTeam._id } }
     );
 
+    // ✅ OPTIONAL: Auto-join team members to the project server
+    // This ensures they have access to the server once they're in a team
+    await Student.updateMany(
+      { _id: { $in: studentIds } },
+      { $addToSet: { joinedServers: projectServer._id } }
+    );
+
     // ✅ Populate the team with member details for response
     const populatedTeam = await StudentTeam.findById(newTeam._id)
       .populate("members", "firstName lastName email")
       .populate("creator", "firstName lastName email");
 
     console.log(`✅ Team "${name.trim()}" created in project ${projectServerCode.trim()}`);
+    console.log(`✅ Team members automatically joined server ${projectServer.code}`);
 
     res.status(201).json({
-      message: "Team created successfully",
+      message: "Team created successfully! All members have been added to the project server.",
       success: true,
       team: populatedTeam
     });
@@ -188,7 +196,6 @@ router.post("/createTeam", verifyToken, async (req, res) => {
     });
   }
 });
-
 // ✅ Get teams under a project server (Enhanced for task creation)
 router.get("/server/:serverId/teams", verifyToken, async (req, res) => {
   try {

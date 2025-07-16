@@ -34,36 +34,47 @@ function RegisterPage() {
     setPasswordStrength(checkPasswordStrength(password));
   };
 
-  const handleRegister = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setError('');
-    setSuccess('');
+const handleRegister = async (e) => {
+  e.preventDefault();
+  setLoading(true);
+  setError('');
+  setSuccess('');
 
-    try {
-      const endpoint = userType === 'faculty' ? 'faculty' : 'student';
-      const createEndpoint = userType === 'faculty' ? 'createFaculty' : 'createStudent';
-      
-      const response = await fetch(`${API_BASE}/${endpoint}/${createEndpoint}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
+  try {
+    // ✅ Fixed: Use correct endpoints
+    const endpoint = userType === 'faculty' ? 'faculty/register' : 'student/register';
+    
+    const response = await fetch(`${API_BASE}/${endpoint}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include', // Added for cookie support
+      body: JSON.stringify(formData)
+    });
+
+    const data = await response.json();
+    
+    if (response.ok) {
+      setSuccess('Registration successful! Please login.');
+      // Clear form data
+      setFormData({
+        firstName: '',
+        lastName: '',
+        email: '',
+        phone: '',
+        username: '',
+        password: ''
       });
-
-      const data = await response.json();
-      
-      if (response.ok) {
-        setSuccess('Registration successful! Please login.');
-        setTimeout(() => setCurrentView('login'), 2000);
-      } else {
-        setError(data.message);
-      }
-    } catch (error) {
-      setError('Registration failed. Please try again.');
-    } finally {
-      setLoading(false);
+      setTimeout(() => setCurrentView('login'), 2000);
+    } else {
+      setError(data.message || 'Registration failed. Please try again.');
     }
-  };
+  } catch (error) {
+    console.error('Registration error:', error);
+    setError('Registration failed. Please check your connection and try again.');
+  } finally {
+    setLoading(false);
+  }
+};
 
   const getPasswordStrengthText = () => {
     switch (passwordStrength) {
