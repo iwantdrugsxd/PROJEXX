@@ -7,11 +7,11 @@ const NotificationCenter = ({ user }) => {
   const [unreadCount, setUnreadCount] = useState(0);
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
-  const API_BASE = import.meta.env.REACT_APP_API_BASE_URL;
+  const API_BASE = process.env.REACT_APP_API_BASE_URL || 'http://localhost:5000/api';
 
   useEffect(() => {
     // Connect to Socket.IO
-    const SOCKET_URL = import.meta.env.REACT_APP_SOCKET_URL;
+const SOCKET_URL = process.env.REACT_APP_SOCKET_URL || 'http://localhost:5000';
     const socket = io(SOCKET_URL, { withCredentials: true });
 
     // Authenticate with socket
