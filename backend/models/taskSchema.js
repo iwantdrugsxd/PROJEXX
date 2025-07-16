@@ -1,7 +1,22 @@
 const mongoose = require('mongoose');
 
 const taskSchema = new mongoose.Schema({
-  // Basic task information
+   team: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'StudentTeam',
+    required: false // Now optional
+  },
+  student: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Student', 
+    required: false // For individual assignments
+  },
+  assignmentType: {
+    type: String,
+    enum: ['team', 'individual'],
+    required: true,
+    default: 'team'
+  },
   title: {
     type: String,
     required: [true, 'Task title is required'],

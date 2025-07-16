@@ -6,6 +6,7 @@ const http = require('http');
 const path = require('path');
 const fs = require('fs');
 
+const setupSocket = require('./socket/socketSetup');
 // Try to load optional dependencies
 let rateLimit, helmet, socketIo;
 try {
@@ -124,6 +125,7 @@ const StudentRoutes = require("./routes/studentRoutes.js");
 const projectServerRoutes = require("./routes/projectServerRoutes");
 const teamRoutes = require("./routes/teamRoutes.js");
 const taskRoutes = require("./routes/taskRoutes.js");
+const notificationRoutes = require('./routes/notificationRoutes');
 
 // Import new feature routes (with error handling)
 let fileRoutes, calendarRoutes, messagingRoutes, settingsRoutes;
@@ -348,7 +350,7 @@ app.use("/api/student", StudentRoutes);
 app.use("/api/projectServers", projectServerRoutes);
 app.use("/api/teamRoutes", teamRoutes);
 app.use("/api/tasks", taskRoutes);
-
+app.use('/api/notifications', notificationRoutes);
 // Optional feature routes (only if modules exist)
 if (fileRoutes) {
   app.use("/api/files", fileRoutes);

@@ -301,7 +301,7 @@ function MessagingSystem({ userRole, userId, user }) {
                   isSelected={selectedChat?._id === chat._id}
                   isOnline={isOnline}
                   onClick={() => setSelectedChat(chat)}
-                  currentUserId={userId}
+                  currentUser ={{ _id: userId }}
                 />
               ))
             ) : (
@@ -484,12 +484,13 @@ function MessagingSystem({ userRole, userId, user }) {
 }
 
 // Chat List Item Component
-function ChatListItem({ chat, isSelected, isOnline, onClick, currentUserId }) {
+function ChatListItem({ chat, isSelected, isOnline, onClick, currentUser}) {
+  const userId = currentUser ._id; 
   const getLastMessageText = () => {
     if (!chat.lastMessage) return 'No messages yet';
     
     const { content, sender, type } = chat.lastMessage;
-    const senderName = sender._id === currentUserId ? 'You' : sender.firstName;
+    const senderName = sender._id === currentUser._id ? 'You' : sender.firstName;
     
     if (type === 'file') return `${senderName} sent a file`;
     if (type === 'image') return `${senderName} sent an image`;
@@ -518,7 +519,7 @@ function ChatListItem({ chat, isSelected, isOnline, onClick, currentUserId }) {
     });
   };
 
-  const otherParticipant = chat.participants?.find(p => p._id !== currentUserId);
+  const otherParticipant = chat.participants?.find(p => p._id !== currentUser._id);
 
   return (
     <div

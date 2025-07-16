@@ -1,16 +1,28 @@
-import React, { useState } from 'react';
-import { Upload, File, X } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Upload, File, X, Users, Plus, Check } from 'lucide-react';
 
-const TaskSubmission = ({ taskId, onSubmitted }) => {
+const TaskSubmission = ({ task, teamMembers, currentUser, onSubmitted }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedFile, setSelectedFile] = useState(null);
   const [comment, setComment] = useState('');
+  const [collaborators, setCollaborators] = useState([]);
+  const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
 
   const handleFileSelect = (event) => {
     const file = event.target.files[0];
     if (file) {
       setSelectedFile(file);
     }
+  };
+
+  const toggleCollaborator = (memberId) => {
+    setCollaborators(prev => {
+      if (prev.includes(memberId)) {
+        return prev.filter(id => id !== memberId);
+      } else {
+        return [...prev, memberId];
+      }
+    });
   };
 
   const handleSubmit = async (e) => {
@@ -26,8 +38,9 @@ const TaskSubmission = ({ taskId, onSubmitted }) => {
       const formData = new FormData();
       formData.append('file', selectedFile);
       formData.append('comment', comment);
+      formData.append('collaborators', JSON.stringify(collaborators));
 
-      const response = await fetch(`/api/tasks/${taskId}/submit`, {
+      const response = await fetch(`${API_BASE}/tasks/${task._id}/submit`, {
         method: 'POST',
         credentials: 'include',
         body: formData
@@ -39,6 +52,7 @@ const TaskSubmission = ({ taskId, onSubmitted }) => {
         onSubmitted();
         setSelectedFile(null);
         setComment('');
+        setCollaborators([]);
         alert('Task submitted successfully!');
       } else {
         alert(data.message || 'Failed to submit task');
@@ -52,69 +66,103 @@ const TaskSubmission = ({ taskId, onSubmitted }) => {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form onSubmit={handleSubmit} className="space-y-6">
+      {/* File Upload */}
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-2">
-          Submit Your Work
+          Submit Your Work *
         </label>
         
         <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-purple-400 transition-colors">
           {selectedFile ? (
-            <div className="flex items-center justify-center space-x-2">
-              <File className="w-5 h-5 text-green-600" />
-              <span className="text-gray-700">{selectedFile.name}</span>
+            <div className="flex items-center justify-center space-x-3">
+              <File className="w-8 h-8 text-purple-500" />
+              <div className="text-left">
+                <p className="font-medium text-gray-800">{selectedFile.name}</p>
+                <p className="text-sm text-gray-500">
+                  {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
+                </p>
+              </div>
               <button
                 type="button"
                 onClick={() => setSelectedFile(null)}
-                className="p-1 text-red-500 hover:bg-red-50 rounded"
+                className="text-red-500 hover:text-red-600"
               >
-                <X className="w-4 h-4" />
+                <X className="w-5 h-5" />
               </button>
             </div>
           ) : (
-            <div>
-              <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-              <p className="text-gray-600 mb-2">Choose a file to upload</p>
+            <label className="cursor-pointer">
+              <Upload className="w-12 h-12 text-gray-400 mx-auto mb-2" />
+              <p className="text-gray-600">Click to upload or drag and drop</p>
+              <p className="text-sm text-gray-500 mt-1">PDF, DOC, ZIP up to 10MB</p>
               <input
                 type="file"
                 onChange={handleFileSelect}
+                accept=".pdf,.doc,.docx,.txt,.zip,.rar"
                 className="hidden"
-                id={`file-upload-${taskId}`}
-                accept=".pdf,.docx,.doc,.txt,.zip,.rar,.jpg,.jpeg,.png"
-                disabled={isSubmitting}
               />
-              <label
-                htmlFor={`file-upload-${taskId}`}
-                className="inline-block px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 cursor-pointer transition-colors"
-              >
-                Select File
-              </label>
-              <p className="text-xs text-gray-500 mt-2">
-                Supported: PDF, DOC, DOCX, TXT, ZIP, RAR, JPG, PNG (Max: 10MB)
-              </p>
-            </div>
+            </label>
           )}
         </div>
       </div>
 
+      {/* Collaborators */}
+      {teamMembers && teamMembers.length > 1 && (
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            <Users className="inline w-4 h-4 mr-1" />
+            Collaborators (Optional)
+          </label>
+          <p className="text-sm text-gray-500 mb-3">
+            Select team members who helped with this task
+          </p>
+          <div className="space-y-2">
+            {teamMembers.filter(member => member._id !== currentUser?._id).map(member => (
+              <label
+                key={member._id}
+                className="flex items-center p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer"
+              >
+                <input
+                  type="checkbox"
+                  checked={collaborators.includes(member._id)}
+                  onChange={() => toggleCollaborator(member._id)}
+                  className="mr-3"
+                />
+                <div className="flex-1">
+                  <p className="font-medium text-gray-800">
+                    {member.firstName} {member.lastName}
+                  </p>
+                  <p className="text-sm text-gray-500">{member.email}</p>
+                </div>
+                {collaborators.includes(member._id) && (
+                  <Check className="w-4 h-4 text-green-500" />
+                )}
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Comment */}
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-2">
-          Comments (Optional)
+          Additional Comments (Optional)
         </label>
         <textarea
           value={comment}
           onChange={(e) => setComment(e.target.value)}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-          rows="3"
-          placeholder="Add any comments about your submission..."
-          disabled={isSubmitting}
+          rows={3}
+          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none"
+          placeholder="Any notes or comments about your submission..."
         />
       </div>
 
+      {/* Submit Button */}
       <button
         type="submit"
         disabled={isSubmitting || !selectedFile}
-        className="w-full px-4 py-3 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-lg hover:from-purple-600 hover:to-indigo-700 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+        className="w-full py-3 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-lg hover:from-purple-600 hover:to-indigo-700 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
       >
         {isSubmitting ? 'Submitting...' : 'Submit Task'}
       </button>

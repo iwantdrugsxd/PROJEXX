@@ -35,7 +35,7 @@ import CalendarView from './Calendar/CalendarView';
 import MessagingSystem from './Messaging/MessagingSystem';
 import SettingsPage from './Settings/SettingsPage';
 import QuickTaskCreator from './QuickTaskCreator';
-
+import NotificationCenter from './Notifications/NotificationCenter';
 function FacultyDashboard() {
   // Use logout from context instead of local implementation
   const { user, setUser, setCurrentView, handleLogout } = useContext(AuthContext);
@@ -140,6 +140,7 @@ function FacultyDashboard() {
         <div className="px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
+               <NotificationCenter user={{ id: user._id, role: 'faculty' }} />
               <div className="w-10 h-10 bg-gradient-to-r from-purple-500 to-indigo-600 rounded-xl flex items-center justify-center">
                 <User className="w-6 h-6 text-white" />
               </div>
