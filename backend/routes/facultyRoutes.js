@@ -168,7 +168,69 @@ router.get("/profile", verifyToken, async (req, res) => {
         });
     }
 });
+router.post("/register", async (req, res) => {
+    try {
+        const { firstName, lastName, email, username, password, phone } = req.body;
 
+        // Validation
+        if (!firstName || !lastName || !email || !username || !password) {
+            return res.status(400).json({ 
+                message: "All required fields must be filled",
+                success: false 
+            });
+        }
+
+        // Check if faculty already exists
+        const existingFaculty = await Faculty.findOne({ 
+            $or: [{ email }, { username }] 
+        });
+        
+        if (existingFaculty) {
+            return res.status(400).json({ 
+                message: "Faculty with this email or username already exists",
+                success: false 
+            });
+        }
+
+        // Hash password
+        const saltRounds = 10;
+        const hashedPassword = await bcrypt.hash(password, saltRounds);
+
+        // Create new faculty
+        const newFaculty = new Faculty({
+            firstName,
+            lastName,
+            email,
+            username,
+            password: hashedPassword,
+            phone: phone || '',
+            role: "faculty"
+        });
+
+        await newFaculty.save();
+
+        console.log("✅ Faculty registered successfully:", email);
+
+        res.status(201).json({
+            message: "Faculty registration successful",
+            success: true,
+            faculty: {
+                id: newFaculty._id,
+                firstName: newFaculty.firstName,
+                lastName: newFaculty.lastName,
+                email: newFaculty.email,
+                username: newFaculty.username
+            }
+        });
+    } catch (err) {
+        console.error("Faculty registration error:", err);
+        res.status(500).json({ 
+            message: "Registration failed", 
+            error: process.env.NODE_ENV === 'production' ? "Internal server error" : err.message,
+            success: false 
+        });
+    }
+});
 // Update faculty profile
 router.put("/profile", verifyToken, async (req, res) => {
     try {
@@ -210,5 +272,6 @@ router.put("/profile", verifyToken, async (req, res) => {
 });
 
 console.log("🔧 Faculty routes loaded successfully");
+
 
 module.exports = router;

@@ -56,7 +56,7 @@ function App() {
     }
   };
 
-  // ✅ FIXED: Dynamic logout based on user role
+  // ✅ CORRECTED: Single logout function with proper role-based endpoints
   const handleLogout = async () => {
     try {
       // Use correct endpoint based on user role
@@ -66,26 +66,43 @@ function App() {
       const response = await fetch(`${API_BASE}/${endpoint}/logout`, {
         method: 'POST',
         credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json'
+        }
       });
 
       if (response.ok) {
-        console.log('✅ Logout successful');
+        console.log('✅ Logout API call successful');
       } else {
         console.warn('⚠️ Logout response not OK, but proceeding with frontend logout');
       }
       
-      // Clear all client-side state
+    } catch (error) {
+      console.error('Logout API failed:', error);
+    } finally {
+      // Clear all client-side state regardless of API response
       setUser(null);
       setCurrentView('landing');
       setUserType('student'); // Reset to default
       
-    } catch (error) {
-      console.error('Logout failed:', error);
-      // Force logout on frontend even if backend fails
-      setUser(null);
-      setCurrentView('landing');
-      setUserType('student');
+      // Clear localStorage
+      localStorage.removeItem('authToken');
+      localStorage.removeItem('user');
+      localStorage.removeItem('userRole');
+      
+      // Clear cookies
+      document.cookie = 'authToken=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+      document.cookie = 'refreshToken=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+      
+      console.log('✅ User logged out successfully');
     }
+  };
+
+  // Handle successful login
+  const handleLogin = (userData) => {
+    setUser(userData);
+    setCurrentView('dashboard');
+    setUserType(userData.role);
   };
 
   // Loading screen
@@ -117,8 +134,12 @@ function App() {
         {currentView === 'landing' && <LandingPage />}
         {currentView === 'login' && <LoginPage />}
         {currentView === 'register' && <RegisterPage />}
-        {currentView === 'dashboard' && userType === 'student' && <StudentDashboard />}
-        {currentView === 'dashboard' && userType === 'faculty' && <FacultyDashboard />}
+        {currentView === 'dashboard' && userType === 'student' && (
+          <StudentDashboard user={user} onLogout={handleLogout} />
+        )}
+        {currentView === 'dashboard' && userType === 'faculty' && (
+          <FacultyDashboard user={user} onLogout={handleLogout} />
+        )}
       </div>
     </AuthContext.Provider>
   );
