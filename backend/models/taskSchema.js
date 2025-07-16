@@ -1,22 +1,14 @@
 const mongoose = require('mongoose');
 
 const taskSchema = new mongoose.Schema({
-   team: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'StudentTeam',
-    required: false // Now optional
-  },
-  student: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Student', 
-    required: false // For individual assignments
-  },
+  // Assignment type and references
   assignmentType: {
     type: String,
     enum: ['team', 'individual'],
     required: true,
     default: 'team'
   },
+
   title: {
     type: String,
     required: [true, 'Task title is required'],
@@ -40,10 +32,22 @@ const taskSchema = new mongoose.Schema({
     required: [true, 'Server reference is required']
   },
 
+  // ✅ FIXED: Single team field (removed duplicate)
   team: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'StudentTeam',
-    required: [true, 'Team reference is required']
+    required: function() {
+      return this.assignmentType === 'team';
+    }
+  },
+
+  // For individual assignments
+  student: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Student', 
+    required: function() {
+      return this.assignmentType === 'individual';
+    }
   },
 
   faculty: {
@@ -84,7 +88,7 @@ const taskSchema = new mongoose.Schema({
     default: 'medium'
   },
 
-  // Submission tracking
+  // ✅ UPDATED: Submission tracking with multiple files support
   submissions: [{
     student: {
       type: mongoose.Schema.Types.ObjectId,
@@ -109,13 +113,21 @@ const taskSchema = new mongoose.Schema({
       trim: true
     },
     
-    file: {
+    // ✅ UPDATED: Support multiple files instead of single file
+    files: [{
       filename: String,
       originalName: String,
       path: String,
       size: Number,
       mimetype: String
-    },
+    }],
+    
+    // ✅ NEW: Collaborators support
+    collaborators: [{
+      type: String, // Email addresses
+      trim: true,
+      lowercase: true
+    }],
     
     // Grading information
     grade: {

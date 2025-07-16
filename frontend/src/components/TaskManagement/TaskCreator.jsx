@@ -18,21 +18,21 @@ import {
 
 const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
   // Form state
-  const [formData, setFormData] = useState({
-    title: '',
-    description: '',
-    dueDate: '',
-    maxPoints: 100,
-    assignmentType: 'teams',
-    teamIds: [],
-    assignToAll: false,
-    allowLateSubmissions: false,
-    maxAttempts: 1,
-    allowFileUpload: true,
-    allowedFileTypes: ['pdf', 'doc', 'docx', 'txt'],
-    maxFileSize: 10485760, // 10MB
-    priority: 'medium'
-  });
+ const [formData, setFormData] = useState({
+  title: '',
+  description: '',
+  dueDate: '',
+  maxPoints: 100,
+  assignmentType: 'team',
+  teamIds: [],
+  assignToAll: false,
+  allowLateSubmissions: false,
+  maxAttempts: 1,
+  allowFileUpload: true,
+  allowedFileTypes: ['pdf', 'doc', 'docx', 'txt', 'jpg', 'png', 'zip'], // ✅ FIXED: Direct array
+  maxFileSize: 10485760, // 10MB
+  priority: 'medium'
+});
 
   // UI state
   const [teams, setTeams] = useState([]);
@@ -141,7 +141,7 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
     }
 
     // Team selection validation
-    if (formData.assignmentType === 'teams' && !formData.assignToAll && formData.teamIds.length === 0) {
+    if (formData.assignmentType === 'team' && !formData.assignToAll && formData.teamIds.length === 0) {
       newErrors.teams = 'Please select at least one team or choose "Assign to All Teams"';
     }
 
@@ -224,7 +224,7 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
         serverId: serverId,
         dueDate: formData.dueDate,
         maxPoints: parseInt(formData.maxPoints),
-        assignmentType: formData.assignmentType,
+        assignmentType: 'team',
         assignToAll: formData.assignToAll,
         teamIds: formData.assignToAll ? [] : formData.teamIds,
         allowLateSubmissions: formData.allowLateSubmissions,

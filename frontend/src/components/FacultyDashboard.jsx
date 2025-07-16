@@ -4,19 +4,15 @@ import {
   Server, 
   Users, 
   FileText, 
-  Calendar,
-  MessageSquare,
   Settings, 
   LogOut,
   Home,
   BarChart3,
-  Bell,
-  Search,
+  User,
   Eye,
   Edit,
   Trash2,
-  Share2,
-  User
+  Share2
 } from 'lucide-react';
 
 // Import task management components
@@ -25,20 +21,20 @@ import FacultyTaskList from './TaskManagement/FacultyTaskList';
 
 const FacultyDashboard = ({ user, onLogout }) => {
   const [activeTab, setActiveTab] = useState('overview');
-  const [projects, setProjects] = useState([]);
-  const [selectedProject, setSelectedProject] = useState(null);
+  const [servers, setServers] = useState([]);
+  const [selectedServer, setSelectedServer] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showServerModal, setShowServerModal] = useState(false);
   const [showTaskCreator, setShowTaskCreator] = useState(false);
-  const [createForm, setCreateForm] = useState({ title: '', description: '' });
+  const [serverForm, setServerForm] = useState({ title: '', description: '' });
 
   const API_BASE = process.env.REACT_APP_API_BASE_URL || 'http://localhost:5000/api';
 
   useEffect(() => {
-    fetchProjects();
+    fetchServers();
   }, []);
 
-  const fetchProjects = async () => {
+  const fetchServers = async () => {
     setLoading(true);
     try {
       const response = await fetch(`${API_BASE}/projectServers/faculty-servers`, {
@@ -47,20 +43,24 @@ const FacultyDashboard = ({ user, onLogout }) => {
       
       const data = await response.json();
       if (data.success) {
-        setProjects(data.servers || []);
+        setServers(data.servers || []);
+        // Auto-select first server if available
+        if (data.servers && data.servers.length > 0 && !selectedServer) {
+          setSelectedServer(data.servers[0]);
+        }
       } else {
-        console.error('Failed to fetch projects:', data.message);
+        console.error('Failed to fetch servers:', data.message);
       }
     } catch (error) {
-      console.error('Error fetching projects:', error);
+      console.error('Error fetching servers:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  const createProject = async () => {
-    if (!createForm.title.trim()) {
-      alert('Project title is required');
+  const createServer = async () => {
+    if (!serverForm.title.trim()) {
+      alert('Server title is required');
       return;
     }
 
@@ -70,27 +70,28 @@ const FacultyDashboard = ({ user, onLogout }) => {
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
-          title: createForm.title.trim(),
-          description: createForm.description.trim()
+          title: serverForm.title.trim(),
+          description: serverForm.description.trim()
         })
       });
 
       const data = await response.json();
       if (data.success) {
-        setProjects(prev => [data.server, ...prev]);
-        setCreateForm({ title: '', description: '' });
-        setShowCreateModal(false);
+        setServers(prev => [data.server, ...prev]);
+        setServerForm({ title: '', description: '' });
+        setShowServerModal(false);
+        setSelectedServer(data.server);
       } else {
-        alert(data.message || 'Failed to create project');
+        alert(data.message || 'Failed to create server');
       }
     } catch (error) {
-      console.error('Error creating project:', error);
+      console.error('Error creating server:', error);
       alert('Network error. Please try again.');
     }
   };
 
   const deleteServer = async (serverId) => {
-    if (!window.confirm('Are you sure you want to delete this project server?')) {
+    if (!window.confirm('Are you sure you want to delete this server?')) {
       return;
     }
 
@@ -102,298 +103,251 @@ const FacultyDashboard = ({ user, onLogout }) => {
 
       const data = await response.json();
       if (data.success) {
-        setProjects(prev => prev.filter(project => project._id !== serverId));
-        if (selectedProject?._id === serverId) {
-          setSelectedProject(null);
+        setServers(prev => prev.filter(server => server._id !== serverId));
+        if (selectedServer?._id === serverId) {
+          setSelectedServer(servers.find(s => s._id !== serverId) || null);
         }
       } else {
-        alert(data.message || 'Failed to delete project');
+        alert(data.message || 'Failed to delete server');
       }
     } catch (error) {
-      console.error('Error deleting project:', error);
+      console.error('Error deleting server:', error);
       alert('Network error. Please try again.');
     }
   };
 
   const handleTaskCreated = () => {
     setShowTaskCreator(false);
-    // Refresh task lists if needed
+    // Refresh any task lists if needed
   };
 
   const tabs = [
     { id: 'overview', label: 'Overview', icon: Home },
-    { id: 'projects', label: 'Projects', icon: Server },
-    { id: 'teams', label: 'Teams', icon: Users },
-    { id: 'tasks', label: 'Tasks', icon: FileText },
-    { id: 'calendar', label: 'Calendar', icon: Calendar },
-    { id: 'messaging', label: 'Messages', icon: MessageSquare },
-    { id: 'analytics', label: 'Analytics', icon: BarChart3 },
-    { id: 'settings', label: 'Settings', icon: Settings }
+    { id: 'servers', label: 'Project Servers', icon: Server },
+    { id: 'tasks', label: 'Task Management', icon: FileText },
+    { id: 'profile', label: 'Profile', icon: User }
   ];
 
-  // Overview Tab
-  function OverviewTab() {
-    return (
-      <div className="space-y-6">
-        {/* Welcome Section */}
-        <div className="bg-gradient-to-r from-purple-500 to-indigo-600 rounded-2xl p-8 text-white">
-          <h1 className="text-3xl font-bold mb-2">Welcome back, {user?.firstName || 'Professor'}!</h1>
-          <p className="text-purple-100 text-lg">Here's what's happening with your projects and students today.</p>
-        </div>
+  // Overview Tab Component
+  const OverviewTab = () => (
+    <div className="space-y-6">
+      <div className="bg-gradient-to-r from-purple-600 to-indigo-600 rounded-xl p-6 text-white">
+        <h1 className="text-2xl font-bold mb-2">
+          Welcome back, {user?.firstName || 'Professor'}!
+        </h1>
+        <p className="text-purple-100">
+          Manage your courses, create assignments, and track student progress.
+        </p>
+      </div>
 
-        {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <div className="bg-white rounded-2xl shadow-lg p-6 border-l-4 border-purple-500">
-            <div className="flex items-center">
-              <div className="p-3 bg-purple-100 rounded-full">
-                <Server className="w-8 h-8 text-purple-600" />
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Active Projects</p>
-                <p className="text-3xl font-bold text-gray-900">{projects.length}</p>
-              </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-white rounded-lg shadow-sm border p-6">
+          <div className="flex items-center">
+            <div className="p-3 bg-purple-100 rounded-lg">
+              <Server className="w-6 h-6 text-purple-600" />
             </div>
-          </div>
-
-          <div className="bg-white rounded-2xl shadow-lg p-6 border-l-4 border-blue-500">
-            <div className="flex items-center">
-              <div className="p-3 bg-blue-100 rounded-full">
-                <Users className="w-8 h-8 text-blue-600" />
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Total Students</p>
-                <p className="text-3xl font-bold text-gray-900">
-                  {projects.reduce((total, project) => total + (project.stats?.studentsCount || 0), 0)}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-2xl shadow-lg p-6 border-l-4 border-green-500">
-            <div className="flex items-center">
-              <div className="p-3 bg-green-100 rounded-full">
-                <FileText className="w-8 h-8 text-green-600" />
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Active Tasks</p>
-                <p className="text-3xl font-bold text-gray-900">
-                  {projects.reduce((total, project) => total + (project.stats?.tasksCount || 0), 0)}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-2xl shadow-lg p-6 border-l-4 border-orange-500">
-            <div className="flex items-center">
-              <div className="p-3 bg-orange-100 rounded-full">
-                <Bell className="w-8 h-8 text-orange-600" />
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Notifications</p>
-                <p className="text-3xl font-bold text-gray-900">5</p>
-              </div>
+            <div className="ml-4">
+              <p className="text-sm font-medium text-gray-600">Project Servers</p>
+              <p className="text-2xl font-bold text-gray-900">{servers.length}</p>
             </div>
           </div>
         </div>
 
-        {/* Recent Activity */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="bg-white rounded-2xl shadow-lg p-6">
-            <h2 className="text-xl font-bold text-gray-800 mb-4">Recent Projects</h2>
-            {projects.length === 0 ? (
-              <div className="text-center py-8">
-                <Server className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-                <p className="text-gray-500">No projects yet</p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {projects.slice(0, 3).map((project) => (
-                  <div key={project._id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                    <div>
-                      <h3 className="font-medium text-gray-900">{project.title}</h3>
-                      <p className="text-sm text-gray-500">Code: {project.code}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-sm font-medium">{project.stats?.teamsCount || 0} teams</p>
-                      <p className="text-xs text-gray-500">{project.stats?.studentsCount || 0} students</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+        <div className="bg-white rounded-lg shadow-sm border p-6">
+          <div className="flex items-center">
+            <div className="p-3 bg-blue-100 rounded-lg">
+              <Users className="w-6 h-6 text-blue-600" />
+            </div>
+            <div className="ml-4">
+              <p className="text-sm font-medium text-gray-600">Total Teams</p>
+              <p className="text-2xl font-bold text-gray-900">
+                {servers.reduce((total, server) => total + (server.stats?.teamsCount || 0), 0)}
+              </p>
+            </div>
           </div>
+        </div>
 
-          <div className="bg-white rounded-2xl shadow-lg p-6">
-            <h2 className="text-xl font-bold text-gray-800 mb-4">Quick Actions</h2>
-            <div className="space-y-3">
-              <button
-                onClick={() => setShowCreateModal(true)}
-                className="w-full flex items-center p-4 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors duration-200"
-              >
-                <Plus className="w-5 h-5 text-purple-600 mr-3" />
-                <span className="text-purple-600 font-medium">Create New Project</span>
-              </button>
-              <button className="w-full flex items-center p-4 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors duration-200">
-                <Users className="w-5 h-5 text-blue-600 mr-3" />
-                <span className="text-blue-600 font-medium">Manage Teams</span>
-              </button>
-              <button className="w-full flex items-center p-4 bg-green-50 hover:bg-green-100 rounded-lg transition-colors duration-200">
-                <FileText className="w-5 h-5 text-green-600 mr-3" />
-                <span className="text-green-600 font-medium">Create Assignment</span>
-              </button>
+        <div className="bg-white rounded-lg shadow-sm border p-6">
+          <div className="flex items-center">
+            <div className="p-3 bg-green-100 rounded-lg">
+              <FileText className="w-6 h-6 text-green-600" />
+            </div>
+            <div className="ml-4">
+              <p className="text-sm font-medium text-gray-600">Total Tasks</p>
+              <p className="text-2xl font-bold text-gray-900">
+                {servers.reduce((total, server) => total + (server.stats?.tasksCount || 0), 0)}
+              </p>
             </div>
           </div>
         </div>
       </div>
-    );
-  }
 
-  // Projects Tab
-  function ProjectsTab() {
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-2xl font-bold text-gray-800">Project Servers</h2>
-            <p className="text-gray-600">Manage your project servers and share access codes with students</p>
-          </div>
+      {/* Recent Servers */}
+      <div className="bg-white rounded-lg shadow-sm border">
+        <div className="px-6 py-4 border-b">
+          <h2 className="text-lg font-semibold text-gray-900">Recent Project Servers</h2>
+        </div>
+        <div className="p-6">
+          {servers.length === 0 ? (
+            <div className="text-center py-8">
+              <Server className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-gray-600 mb-2">No Servers Yet</h3>
+              <p className="text-gray-500 mb-4">Create your first project server to get started</p>
+              <button
+                onClick={() => setShowServerModal(true)}
+                className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors"
+              >
+                Create Server
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {servers.slice(0, 4).map((server) => (
+                <div key={server._id} className="border rounded-lg p-4 hover:shadow-md transition-shadow">
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="font-medium text-gray-900">{server.title}</h3>
+                    <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full">
+                      {server.code}
+                    </span>
+                  </div>
+                  <p className="text-sm text-gray-600 mb-3">{server.description}</p>
+                  <div className="flex items-center justify-between text-sm text-gray-500">
+                    <span>{server.stats?.teamsCount || 0} teams</span>
+                    <span>{server.stats?.tasksCount || 0} tasks</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
+  // Servers Tab Component
+  const ServersTab = () => (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Project Servers</h1>
+          <p className="text-gray-600">Manage your course servers and share codes with students</p>
+        </div>
+        <button
+          onClick={() => setShowServerModal(true)}
+          className="bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-6 py-3 rounded-lg hover:from-purple-700 hover:to-indigo-700 transition-all flex items-center shadow-lg"
+        >
+          <Plus className="w-5 h-5 mr-2" />
+          Create Server
+        </button>
+      </div>
+
+      {servers.length === 0 ? (
+        <div className="bg-white rounded-lg shadow-sm border p-12 text-center">
+          <Server className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-gray-600 mb-2">No Project Servers</h3>
+          <p className="text-gray-500 mb-6">Create your first server to start managing student projects</p>
           <button
-            onClick={() => setShowCreateModal(true)}
-            className="px-6 py-3 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-xl hover:from-purple-600 hover:to-indigo-700 transition-all duration-300 flex items-center shadow-lg"
+            onClick={() => setShowServerModal(true)}
+            className="bg-purple-600 text-white px-6 py-3 rounded-lg hover:bg-purple-700 transition-colors"
           >
-            <Plus className="w-5 h-5 mr-2" />
-            Create Project
+            Create Your First Server
           </button>
         </div>
-
-        {projects.length === 0 ? (
-          <div className="text-center py-12 bg-white rounded-2xl shadow-lg">
-            <Server className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-600 mb-2">No Project Servers Yet</h3>
-            <p className="text-gray-500 mb-6">Create your first project server to get started</p>
-            <button
-              onClick={() => setShowCreateModal(true)}
-              className="px-6 py-3 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-xl hover:from-purple-600 hover:to-indigo-700 transition-all duration-300"
-            >
-              Create Server
-            </button>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {projects.map((project) => (
-              <div key={project._id} className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-shadow duration-300 border-l-4 border-purple-500">
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex-1">
-                    <h3 className="text-xl font-bold text-gray-800 mb-2">{project.title}</h3>
-                    <p className="text-gray-600 text-sm mb-3">{project.description}</p>
-                    <div className="flex items-center space-x-2">
-                      <span className="px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-xs font-medium">
-                        Code: {project.code}
-                      </span>
-                    </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {servers.map((server) => (
+            <div key={server._id} className="bg-white rounded-lg shadow-sm border p-6 hover:shadow-md transition-shadow">
+              <div className="flex items-start justify-between mb-4">
+                <div className="flex-1">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2">{server.title}</h3>
+                  <p className="text-gray-600 text-sm mb-3">{server.description}</p>
+                  <div className="flex items-center space-x-2">
+                    <span className="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded-full font-medium">
+                      Code: {server.code}
+                    </span>
                   </div>
-                </div>
-
-                <div className="grid grid-cols-3 gap-4 mb-6">
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-blue-600">{project.stats?.teamsCount || 0}</div>
-                    <div className="text-xs text-gray-500">Teams</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-green-600">{project.stats?.tasksCount || 0}</div>
-                    <div className="text-xs text-gray-500">Tasks</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-orange-600">{project.stats?.studentsCount || 0}</div>
-                    <div className="text-xs text-gray-500">Students</div>
-                  </div>
-                </div>
-
-                <div className="flex items-center space-x-2">
-                  <button
-                    onClick={() => setSelectedProject(project)}
-                    className="flex-1 flex items-center justify-center space-x-2 px-3 py-2 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-lg transition-colors duration-200"
-                  >
-                    <Eye className="w-4 h-4" />
-                    <span className="text-sm">Manage</span>
-                  </button>
-                  
-                  <button className="flex-1 flex items-center justify-center space-x-2 px-3 py-2 bg-green-50 hover:bg-green-100 text-green-600 rounded-lg transition-colors duration-200">
-                    <Share2 className="w-4 h-4" />
-                    <span className="text-sm">Share</span>
-                  </button>
-                  
-                  <button
-                    onClick={() => deleteServer(project._id)}
-                    className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors duration-200"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
                 </div>
               </div>
-            ))}
-          </div>
-        )}
-      </div>
-    );
-  }
 
-  // Teams Tab
-  function TeamsTab() {
-    return (
-      <div className="space-y-6">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-800">Teams</h2>
-          <p className="text-gray-600">Monitor student teams and their progress</p>
+              <div className="grid grid-cols-3 gap-4 mb-4 text-center">
+                <div>
+                  <div className="text-lg font-semibold text-blue-600">{server.stats?.teamsCount || 0}</div>
+                  <div className="text-xs text-gray-500">Teams</div>
+                </div>
+                <div>
+                  <div className="text-lg font-semibold text-green-600">{server.stats?.tasksCount || 0}</div>
+                  <div className="text-xs text-gray-500">Tasks</div>
+                </div>
+                <div>
+                  <div className="text-lg font-semibold text-orange-600">{server.stats?.studentsCount || 0}</div>
+                  <div className="text-xs text-gray-500">Students</div>
+                </div>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={() => setSelectedServer(server)}
+                  className="flex-1 flex items-center justify-center space-x-2 px-3 py-2 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-lg transition-colors duration-200"
+                >
+                  <Eye className="w-4 h-4" />
+                  <span className="text-sm">Manage</span>
+                </button>
+                
+                <button className="flex-1 flex items-center justify-center space-x-2 px-3 py-2 bg-green-50 hover:bg-green-100 text-green-600 rounded-lg transition-colors duration-200">
+                  <Share2 className="w-4 h-4" />
+                  <span className="text-sm">Share</span>
+                </button>
+                
+                <button
+                  onClick={() => deleteServer(server._id)}
+                  className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors duration-200"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          ))}
         </div>
+      )}
+    </div>
+  );
 
-        <div className="bg-white rounded-2xl shadow-lg p-6">
-          <div className="text-center py-12">
-            <Users className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-600 mb-2">Teams Management Coming Soon</h3>
-            <p className="text-gray-500">Team management functionality will be available in the next update</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Tasks Tab
-  function TasksTab() {
-    if (!selectedProject) {
+  // Tasks Tab Component
+  const TasksTab = () => {
+    if (!selectedServer) {
       return (
         <div className="space-y-6">
           <div>
-            <h2 className="text-2xl font-bold text-gray-800">Task Management</h2>
+            <h1 className="text-2xl font-bold text-gray-900">Task Management</h1>
             <p className="text-gray-600">Create and manage assignments for your students</p>
           </div>
 
-          <div className="bg-white rounded-2xl shadow-lg p-12 text-center">
-            <FileText className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+          <div className="bg-white rounded-lg shadow-sm border p-12 text-center">
+            <Server className="w-16 h-16 text-gray-300 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-gray-600 mb-2">Select a Project Server</h3>
-            <p className="text-gray-500 mb-6">Choose a project server to manage its tasks and assignments</p>
+            <p className="text-gray-500 mb-6">Choose a server to manage its tasks and assignments</p>
             
-            {projects.length === 0 ? (
+            {servers.length === 0 ? (
               <button
-                onClick={() => setShowCreateModal(true)}
-                className="px-6 py-3 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-xl hover:from-purple-600 hover:to-indigo-700 transition-all duration-300"
+                onClick={() => setShowServerModal(true)}
+                className="bg-purple-600 text-white px-6 py-3 rounded-lg hover:bg-purple-700 transition-colors"
               >
-                Create Your First Project
+                Create Your First Server
               </button>
             ) : (
               <div className="space-y-4">
-                <h4 className="text-sm font-medium text-gray-700">Available Projects:</h4>
+                <h4 className="text-sm font-medium text-gray-700">Available Servers:</h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl mx-auto">
-                  {projects.map((project) => (
+                  {servers.map((server) => (
                     <button
-                      key={project._id}
-                      onClick={() => setSelectedProject(project)}
+                      key={server._id}
+                      onClick={() => setSelectedServer(server)}
                       className="p-4 border border-gray-200 rounded-lg hover:border-purple-300 hover:bg-purple-50 transition-colors text-left"
                     >
-                      <div className="font-medium text-gray-900">{project.title}</div>
-                      <div className="text-sm text-gray-500">Code: {project.code}</div>
+                      <div className="font-medium text-gray-900">{server.title}</div>
+                      <div className="text-sm text-gray-500">Code: {server.code}</div>
                       <div className="text-xs text-gray-400 mt-1">
-                        {project.stats?.teamsCount || 0} teams • {project.stats?.tasksCount || 0} tasks
+                        {server.stats?.teamsCount || 0} teams • {server.stats?.tasksCount || 0} tasks
                       </div>
                     </button>
                   ))}
@@ -407,33 +361,33 @@ const FacultyDashboard = ({ user, onLogout }) => {
 
     return (
       <div className="space-y-6">
-        {/* Project Header */}
-        <div className="bg-white rounded-2xl shadow-lg p-6">
+        {/* Server Selection Header */}
+        <div className="bg-white rounded-lg shadow-sm border p-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
-              <div className="p-3 bg-purple-100 rounded-lg">
-                <Server className="w-6 h-6 text-purple-600" />
+              <div className="p-2 bg-purple-100 rounded-lg">
+                <Server className="w-5 h-5 text-purple-600" />
               </div>
               <div>
-                <h2 className="text-xl font-bold text-gray-900">{selectedProject.title}</h2>
-                <p className="text-sm text-gray-500">Code: {selectedProject.code}</p>
+                <h2 className="font-semibold text-gray-900">{selectedServer.title}</h2>
+                <p className="text-sm text-gray-500">Code: {selectedServer.code}</p>
               </div>
             </div>
             
             <div className="flex items-center space-x-4">
               <button
                 onClick={() => setShowTaskCreator(true)}
-                className="px-6 py-3 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-xl hover:from-purple-600 hover:to-indigo-700 transition-all duration-300 flex items-center"
+                className="bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-4 py-2 rounded-lg hover:from-purple-700 hover:to-indigo-700 transition-all flex items-center"
               >
                 <Plus className="w-4 h-4 mr-2" />
                 Create Task
               </button>
               
               <button
-                onClick={() => setSelectedProject(null)}
+                onClick={() => setSelectedServer(null)}
                 className="text-gray-600 hover:text-gray-800 text-sm"
               >
-                Switch Project
+                Switch Server
               </button>
             </div>
           </div>
@@ -441,127 +395,65 @@ const FacultyDashboard = ({ user, onLogout }) => {
 
         {/* Task List */}
         <FacultyTaskList 
-          serverId={selectedProject._id}
-          serverTitle={selectedProject.title}
+          serverId={selectedServer._id}
+          serverTitle={selectedServer.title}
         />
       </div>
     );
-  }
+  };
 
-  // Calendar Tab
-  function CalendarTab() {
-    return (
-      <div className="space-y-6">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-800">Calendar</h2>
-          <p className="text-gray-600">View important dates and deadlines</p>
+  // Profile Tab Component
+  const ProfileTab = () => (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900">Profile Settings</h1>
+        <p className="text-gray-600">Manage your account information and preferences</p>
+      </div>
+
+      <div className="bg-white rounded-lg shadow-sm border p-6">
+        <div className="flex items-center space-x-6 mb-6">
+          <div className="w-20 h-20 bg-gray-300 rounded-full flex items-center justify-center">
+            <User className="w-8 h-8 text-gray-600" />
+          </div>
+          <div>
+            <h2 className="text-xl font-semibold text-gray-900">
+              {user?.firstName} {user?.lastName}
+            </h2>
+            <p className="text-gray-600">{user?.email}</p>
+            <p className="text-sm text-gray-500">Faculty</p>
+          </div>
         </div>
 
-        <div className="bg-white rounded-2xl shadow-lg p-6">
-          <div className="text-center py-12">
-            <Calendar className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-600 mb-2">Calendar Coming Soon</h3>
-            <p className="text-gray-500">Calendar functionality will be available in the next update</p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">First Name</label>
+            <input
+              type="text"
+              defaultValue={user?.firstName}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+            />
           </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Last Name</label>
+            <input
+              type="text"
+              defaultValue={user?.lastName}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+            />
+          </div>
+        </div>
+
+        <div className="mt-6 pt-6 border-t">
+          <button className="bg-purple-600 text-white px-6 py-2 rounded-lg hover:bg-purple-700 transition-colors">
+            Save Changes
+          </button>
         </div>
       </div>
-    );
-  }
+    </div>
+  );
 
-  // Messaging Tab
-  function MessagingTab() {
-    return (
-      <div className="space-y-6">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-800">Messages</h2>
-          <p className="text-gray-600">Communicate with your students</p>
-        </div>
-
-        <div className="bg-white rounded-2xl shadow-lg p-6">
-          <div className="text-center py-12">
-            <MessageSquare className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-600 mb-2">Messaging Coming Soon</h3>
-            <p className="text-gray-500">Messaging functionality will be available in the next update</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Analytics Tab
-  function AnalyticsTab() {
-    return (
-      <div className="space-y-6">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-800">Analytics</h2>
-          <p className="text-gray-600">Track student progress and performance</p>
-        </div>
-
-        <div className="bg-white rounded-2xl shadow-lg p-6">
-          <div className="text-center py-12">
-            <BarChart3 className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-600 mb-2">Analytics Coming Soon</h3>
-            <p className="text-gray-500">Analytics functionality will be available in the next update</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Settings Tab
-  function SettingsTab() {
-    return (
-      <div className="space-y-6">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-800">Settings</h2>
-          <p className="text-gray-600">Manage your account and preferences</p>
-        </div>
-
-        <div className="bg-white rounded-2xl shadow-lg p-6">
-          <div className="flex items-center space-x-6 mb-6">
-            <div className="w-20 h-20 bg-gray-300 rounded-full flex items-center justify-center">
-              <User className="w-8 h-8 text-gray-600" />
-            </div>
-            <div>
-              <h2 className="text-xl font-semibold text-gray-900">
-                {user?.firstName} {user?.lastName}
-              </h2>
-              <p className="text-gray-600">{user?.email}</p>
-              <p className="text-sm text-gray-500">Faculty</p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">First Name</label>
-              <input
-                type="text"
-                defaultValue={user?.firstName}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Last Name</label>
-              <input
-                type="text"
-                defaultValue={user?.lastName}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-              />
-            </div>
-          </div>
-
-          <div className="mt-6 pt-6 border-t">
-            <button className="bg-purple-600 text-white px-6 py-2 rounded-lg hover:bg-purple-700 transition-colors">
-              Save Changes
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Create Modal
-  const CreateModal = () => (
+  // Server Creation Modal
+  const ServerModal = () => (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
         <div className="p-6">
@@ -569,11 +461,11 @@ const FacultyDashboard = ({ user, onLogout }) => {
           
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Project Title *</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Server Title *</label>
               <input
                 type="text"
-                value={createForm.title}
-                onChange={(e) => setCreateForm(prev => ({ ...prev, title: e.target.value }))}
+                value={serverForm.title}
+                onChange={(e) => setServerForm(prev => ({ ...prev, title: e.target.value }))}
                 placeholder="e.g., Data Structures Fall 2024"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
               />
@@ -582,8 +474,8 @@ const FacultyDashboard = ({ user, onLogout }) => {
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
               <textarea
-                value={createForm.description}
-                onChange={(e) => setCreateForm(prev => ({ ...prev, description: e.target.value }))}
+                value={serverForm.description}
+                onChange={(e) => setServerForm(prev => ({ ...prev, description: e.target.value }))}
                 placeholder="Brief description of the course..."
                 rows={3}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
@@ -594,18 +486,18 @@ const FacultyDashboard = ({ user, onLogout }) => {
           <div className="flex justify-end space-x-3 mt-6">
             <button
               onClick={() => {
-                setShowCreateModal(false);
-                setCreateForm({ title: '', description: '' });
+                setShowServerModal(false);
+                setServerForm({ title: '', description: '' });
               }}
               className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
             >
               Cancel
             </button>
             <button
-              onClick={createProject}
+              onClick={createServer}
               className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
             >
-              Create Project
+              Create Server
             </button>
           </div>
         </div>
@@ -631,31 +523,20 @@ const FacultyDashboard = ({ user, onLogout }) => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center">
-              <h1 className="text-2xl font-bold text-gray-900">ProjectFlow</h1>
-              <span className="ml-2 text-sm text-gray-500">Faculty Dashboard</span>
+              <h1 className="text-xl font-bold text-gray-900">ProjectFlow</h1>
+              <span className="ml-2 text-sm text-gray-500">Faculty Portal</span>
             </div>
             
             <div className="flex items-center space-x-4">
               <div className="flex items-center text-sm text-gray-600">
                 <User className="w-4 h-4 mr-2" />
-                Welcome, {user?.firstName || 'Faculty'}
+                {user?.firstName} {user?.lastName}
               </div>
               <button
-                onClick={(e) => {
-                  e.preventDefault();
-                  console.log('Logout button clicked'); // Debug log
-                  if (onLogout && typeof onLogout === 'function') {
-                    onLogout();
-                  } else {
-                    // Fallback logout logic
-                    localStorage.removeItem('authToken');
-                    document.cookie = 'authToken=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
-                    window.location.href = '/login';
-                  }
-                }}
-                className="flex items-center px-3 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                onClick={onLogout}
+                className="flex items-center text-gray-600 hover:text-gray-900 transition-colors"
               >
-                <LogOut className="w-4 h-4 mr-2" />
+                <LogOut className="w-4 h-4 mr-1" />
                 Logout
               </button>
             </div>
@@ -666,14 +547,14 @@ const FacultyDashboard = ({ user, onLogout }) => {
       {/* Navigation */}
       <nav className="bg-white border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex space-x-8 overflow-x-auto">
+          <div className="flex space-x-8">
             {tabs.map((tab) => {
               const Icon = tab.icon;
               return (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`flex items-center px-1 py-4 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                  className={`flex items-center px-1 py-4 text-sm font-medium border-b-2 transition-colors ${
                     activeTab === tab.id
                       ? 'border-purple-500 text-purple-600'
                       : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -691,21 +572,17 @@ const FacultyDashboard = ({ user, onLogout }) => {
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {activeTab === 'overview' && <OverviewTab />}
-        {activeTab === 'projects' && <ProjectsTab />}
-        {activeTab === 'teams' && <TeamsTab />}
+        {activeTab === 'servers' && <ServersTab />}
         {activeTab === 'tasks' && <TasksTab />}
-        {activeTab === 'calendar' && <CalendarTab />}
-        {activeTab === 'messaging' && <MessagingTab />}
-        {activeTab === 'analytics' && <AnalyticsTab />}
-        {activeTab === 'settings' && <SettingsTab />}
+        {activeTab === 'profile' && <ProfileTab />}
       </main>
 
       {/* Modals */}
-      {showCreateModal && <CreateModal />}
-      {showTaskCreator && selectedProject && (
+      {showServerModal && <ServerModal />}
+      {showTaskCreator && selectedServer && (
         <TaskCreator
-          serverId={selectedProject._id}
-          serverTitle={selectedProject.title}
+          serverId={selectedServer._id}
+          serverTitle={selectedServer.title}
           onTaskCreated={handleTaskCreated}
           onClose={() => setShowTaskCreator(false)}
         />

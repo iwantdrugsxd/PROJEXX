@@ -6,8 +6,53 @@ const Student = require('../models/studentSchema');
 const ProjectServer = require('../models/projectServerSchema');
 const verifyToken = require('../middleware/verifyToken');
 const NotificationService = require('../services/notificationService');
-
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
 console.log('🔧 taskRoutes.js loaded');
+// Configure multer for task submissions
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const uploadsDir = path.join(__dirname, '../uploads/submissions');
+    if (!fs.existsSync(uploadsDir)) {
+      fs.mkdirSync(uploadsDir, { recursive: true });
+    }
+    cb(null, uploadsDir);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const ext = path.extname(file.originalname);
+    const name = path.basename(file.originalname, ext);
+    cb(null, `${name}-${uniqueSuffix}${ext}`);
+  }
+});
+
+const fileFilter = (req, file, cb) => {
+  const allowedTypes = [
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'text/plain',
+    'image/jpeg',
+    'image/png',
+    'application/zip',
+    'application/x-zip-compressed'
+  ];
+
+  if (allowedTypes.includes(file.mimetype)) {
+    cb(null, true);
+  } else {
+    cb(new Error('Invalid file type'), false);
+  }
+};
+
+const upload = multer({
+  storage: storage,
+  fileFilter: fileFilter,
+  limits: {
+    fileSize: 50 * 1024 * 1024 // 50MB limit
+  }
+});
 
 // ✅ Create task - Enhanced for team and individual assignments
 router.post('/create', verifyToken, async (req, res) => {
@@ -394,7 +439,13 @@ router.get('/student-tasks', verifyToken, async (req, res) => {
 });
 
 // ✅ Submit task
-router.post('/:taskId/submit', verifyToken, async (req, res) => {
+router.post('/:taskId/submit', verifyToken, upload.array('files', 10), async (req, res) => {
+  console.log('🎯 TASK SUBMISSION route hit');
+  console.log('Task ID:', req.params.taskId);
+  console.log('User:', req.user);
+  console.log('Files:', req.files);
+  console.log('Body:', req.body);
+
   try {
     if (req.user.role !== 'student') {
       return res.status(403).json({ 
@@ -404,7 +455,7 @@ router.post('/:taskId/submit', verifyToken, async (req, res) => {
     }
 
     const { taskId } = req.params;
-    const { comment, collaborators = [] } = req.body;
+    const { comment, collaborators } = req.body;
 
     const task = await Task.findById(taskId)
       .populate('team', 'name members')
@@ -417,7 +468,7 @@ router.post('/:taskId/submit', verifyToken, async (req, res) => {
       });
     }
 
-    // ✅ UPDATED: Check if student is part of the assigned team (not server membership)
+    // Check if student is part of the assigned team
     const isTeamMember = task.team.members.some(member => 
       member.toString() === req.user.id
     );
@@ -468,6 +519,32 @@ router.post('/:taskId/submit', verifyToken, async (req, res) => {
       });
     }
 
+    // Process collaborators
+    let parsedCollaborators = [];
+    if (collaborators) {
+      try {
+        parsedCollaborators = typeof collaborators === 'string' 
+          ? JSON.parse(collaborators) 
+          : collaborators;
+      } catch (e) {
+        console.log('Could not parse collaborators:', e);
+      }
+    }
+
+    // Process uploaded files
+    const uploadedFiles = [];
+    if (req.files && req.files.length > 0) {
+      req.files.forEach(file => {
+        uploadedFiles.push({
+          filename: file.filename,
+          originalName: file.originalname,
+          path: file.path,
+          size: file.size,
+          mimetype: file.mimetype
+        });
+      });
+    }
+
     // Create submission
     const submission = {
       student: req.user.id,
@@ -476,34 +553,46 @@ router.post('/:taskId/submit', verifyToken, async (req, res) => {
       status: 'submitted',
       isLate: new Date() > task.dueDate,
       attemptNumber: studentSubmissions.length + 1,
-      collaborators: collaborators
+      collaborators: parsedCollaborators,
+      files: uploadedFiles // Store file information
     };
 
     task.submissions.push(submission);
     await task.save();
-
-    // Notify faculty
-    if (NotificationService && NotificationService.notifyTaskSubmitted) {
-      await NotificationService.notifyTaskSubmitted(task, submission, req.user);
-    }
 
     console.log(`✅ Task ${taskId} submitted by student ${req.user.id}`);
 
     res.status(201).json({
       success: true,
       message: 'Task submitted successfully',
-      submission: submission
+      submission: {
+        ...submission,
+        files: uploadedFiles.length
+      }
     });
 
   } catch (error) {
     console.error('❌ Submit task error:', error);
+    
+    // Clean up uploaded files if submission failed
+    if (req.files) {
+      req.files.forEach(file => {
+        if (fs.existsSync(file.path)) {
+          try {
+            fs.unlinkSync(file.path);
+          } catch (unlinkError) {
+            console.error('Error cleaning up file:', unlinkError);
+          }
+        }
+      });
+    }
+
     res.status(500).json({ 
       message: error.message || 'Failed to submit task',
       success: false 
     });
   }
 });
-
 // ✅ Grade task submission
 router.post('/:taskId/grade/:studentId', verifyToken, async (req, res) => {
   try {
