@@ -5,13 +5,15 @@ const Student = require("../models/studentSchema");
 const StudentTeam = require("../models/studentTeamSchema");
 const Task = require("../models/taskSchema");
 const verifyToken = require("../middleware/verifyToken");
-const NotificationService = require('../services/notificationService');
 
 console.log("🔧 projectServerRoutes.js loaded");
 
-// ✅ Create project server (Faculty only)
+// ✅ Create project server (Faculty only) - FIXED CODE GENERATION
 router.post("/create", verifyToken, async (req, res) => {
   try {
+    console.log("📝 Create server request received from faculty:", req.user.id);
+    console.log("📝 Request body:", req.body);
+
     if (req.user.role !== "faculty") {
       return res.status(403).json({ 
         message: "Only faculty can create project servers",
@@ -35,36 +37,46 @@ router.post("/create", verifyToken, async (req, res) => {
       });
     }
 
-    // Generate unique server code
-    const generateCode = () => {
+    // ENHANCED: Generate unique server code with better logic
+    const generateUniqueCode = async () => {
       const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-      let code = '';
-      for (let i = 0; i < 6; i++) {
-        code += chars.charAt(Math.floor(Math.random() * chars.length));
+      let attempts = 0;
+      const maxAttempts = 20;
+
+      while (attempts < maxAttempts) {
+        let code = '';
+        for (let i = 0; i < 6; i++) {
+          code += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+        
+        console.log(`🔄 Attempting code generation: ${code} (attempt ${attempts + 1})`);
+        
+        // Check if code already exists
+        const existingServer = await ProjectServer.findOne({ code: code });
+        if (!existingServer) {
+          console.log(`✅ Generated unique code: ${code}`);
+          return code;
+        }
+        
+        console.log(`❌ Code ${code} already exists, trying again...`);
+        attempts++;
       }
-      return code;
+      
+      throw new Error("Failed to generate unique server code after multiple attempts");
     };
 
     let serverCode;
-    let isUnique = false;
-    let attempts = 0;
-    const maxAttempts = 10;
-
-    while (!isUnique && attempts < maxAttempts) {
-      serverCode = generateCode();
-      const existingServer = await ProjectServer.findOne({ code: serverCode });
-      if (!existingServer) {
-        isUnique = true;
-      }
-      attempts++;
-    }
-
-    if (!isUnique) {
+    try {
+      serverCode = await generateUniqueCode();
+    } catch (error) {
+      console.error("❌ Code generation failed:", error);
       return res.status(500).json({ 
         message: "Failed to generate unique server code. Please try again.",
         success: false 
       });
     }
+
+    console.log(`🎯 Creating project server with code: ${serverCode}`);
 
     const projectServer = new ProjectServer({
       title: title.trim(),
@@ -72,24 +84,41 @@ router.post("/create", verifyToken, async (req, res) => {
       code: serverCode,
       faculty: req.user.id,
       createdAt: new Date(),
+      updatedAt: new Date(),
       isActive: true
     });
 
-    await projectServer.save();
+    const savedServer = await projectServer.save();
+    console.log(`✅ Server saved successfully with ID: ${savedServer._id}`);
 
     // Populate faculty details for response
-    await projectServer.populate('faculty', 'firstName lastName email');
+    await savedServer.populate('faculty', 'firstName lastName email');
 
-    console.log(`✅ Project server created: ${projectServer.title} (${serverCode}) by faculty ${req.user.id}`);
+    console.log(`✅ Project server created: "${savedServer.title}" (${savedServer.code}) by faculty ${req.user.id}`);
 
     res.status(201).json({
       message: "Project server created successfully",
       success: true,
-      server: projectServer
+      server: {
+        _id: savedServer._id,
+        title: savedServer.title,
+        description: savedServer.description,
+        code: savedServer.code,
+        faculty: savedServer.faculty,
+        createdAt: savedServer.createdAt,
+        updatedAt: savedServer.updatedAt,
+        isActive: savedServer.isActive,
+        teams: [], // Empty initially
+        stats: {
+          teamsCount: 0,
+          tasksCount: 0,
+          studentsCount: 0
+        }
+      }
     });
 
   } catch (err) {
-    console.error("Error creating project server:", err);
+    console.error("❌ Error creating project server:", err);
     res.status(500).json({ 
       message: "Failed to create project server", 
       error: process.env.NODE_ENV === 'production' ? "Internal server error" : err.message,
@@ -98,9 +127,11 @@ router.post("/create", verifyToken, async (req, res) => {
   }
 });
 
-// ✅ Get faculty's project servers
+// ✅ Get faculty's project servers WITH TEAMS AND STATS
 router.get("/faculty-servers", verifyToken, async (req, res) => {
   try {
+    console.log(`📊 Faculty ${req.user.id} requesting their servers`);
+
     if (req.user.role !== "faculty") {
       return res.status(403).json({ 
         message: "Only faculty can access this endpoint",
@@ -112,26 +143,28 @@ router.get("/faculty-servers", verifyToken, async (req, res) => {
       .populate('faculty', 'firstName lastName email')
       .sort({ createdAt: -1 });
 
-    // Add statistics for each server
-    const serversWithStats = await Promise.all(
+    console.log(`📊 Found ${projectServers.length} servers for faculty ${req.user.id}`);
+
+    // Add teams and statistics for each server
+    const serversWithDetails = await Promise.all(
       projectServers.map(async (server) => {
-        const serverObj = server.toObject();
+        console.log(`📊 Processing server: ${server.title} (${server.code})`);
         
-        // Get teams count
-        const teamsCount = await StudentTeam.countDocuments({ 
+        // Get teams for this server using the server code
+        const teams = await StudentTeam.find({ 
           projectServer: server.code 
-        });
+        }).populate('members', '_id firstName lastName email');
         
-        // Get tasks count
+        console.log(`📊 Found ${teams.length} teams for server ${server.code}`);
+        
+        // Get tasks for this server
         const tasksCount = await Task.countDocuments({ 
           server: server._id 
         });
         
-        // Get unique students count (from teams)
-        const teams = await StudentTeam.find({ 
-          projectServer: server.code 
-        }).populate('members', '_id');
+        console.log(`📊 Found ${tasksCount} tasks for server ${server._id}`);
         
+        // Calculate unique students from teams
         const uniqueStudents = new Set();
         teams.forEach(team => {
           team.members.forEach(member => {
@@ -139,27 +172,42 @@ router.get("/faculty-servers", verifyToken, async (req, res) => {
           });
         });
         
+        const serverObj = server.toObject();
+        
+        // Add teams data
+        serverObj.teams = teams.map(team => ({
+          _id: team._id,
+          name: team.name,
+          members: team.members,
+          creator: team.creator,
+          createdAt: team.createdAt,
+          projectServer: team.projectServer
+        }));
+        
+        // Add statistics
         serverObj.stats = {
-          teamsCount,
+          teamsCount: teams.length,
           tasksCount,
           studentsCount: uniqueStudents.size,
           lastActivity: server.updatedAt
         };
         
+        console.log(`📊 Server ${server.code} stats: ${teams.length} teams, ${tasksCount} tasks, ${uniqueStudents.size} students`);
+        
         return serverObj;
       })
     );
 
-    console.log(`✅ Found ${projectServers.length} servers for faculty ${req.user.id}`);
+    console.log(`✅ Returning ${serversWithDetails.length} servers with complete details`);
 
     res.status(200).json({
       success: true,
-      servers: serversWithStats,
+      servers: serversWithDetails,
       message: projectServers.length === 0 ? "No project servers found" : `Found ${projectServers.length} project servers`
     });
 
   } catch (err) {
-    console.error("Error fetching faculty servers:", err);
+    console.error("❌ Error fetching faculty servers:", err);
     res.status(500).json({ 
       message: "Failed to fetch project servers", 
       error: process.env.NODE_ENV === 'production' ? "Internal server error" : err.message,
@@ -171,6 +219,8 @@ router.get("/faculty-servers", verifyToken, async (req, res) => {
 // ✅ Get student's project servers (based on team membership)
 router.get("/student-servers", verifyToken, async (req, res) => {
   try {
+    console.log(`📊 Student ${req.user.id} requesting their servers via teams`);
+
     if (req.user.role !== "student") {
       return res.status(403).json({ 
         message: "Only students can access this endpoint",
@@ -178,10 +228,12 @@ router.get("/student-servers", verifyToken, async (req, res) => {
       });
     }
 
-    // ✅ UPDATED: Get servers based on team membership instead of direct server membership
+    // Get teams the student is part of
     const studentTeams = await StudentTeam.find({ 
       members: req.user.id 
     }).populate('members', 'firstName lastName email');
+
+    console.log(`📊 Student ${req.user.id} is in ${studentTeams.length} teams`);
 
     if (studentTeams.length === 0) {
       return res.status(200).json({
@@ -194,6 +246,7 @@ router.get("/student-servers", verifyToken, async (req, res) => {
 
     // Get unique server codes from teams
     const serverCodes = [...new Set(studentTeams.map(team => team.projectServer))];
+    console.log(`📊 Server codes from teams:`, serverCodes);
     
     // Get server details
     const projectServers = await ProjectServer.find({ 
@@ -201,6 +254,8 @@ router.get("/student-servers", verifyToken, async (req, res) => {
     })
     .populate('faculty', 'firstName lastName email')
     .sort({ createdAt: -1 });
+
+    console.log(`📊 Found ${projectServers.length} servers for codes:`, serverCodes);
 
     // Add team information to each server
     const serversWithTeams = projectServers.map(server => {
@@ -211,12 +266,13 @@ router.get("/student-servers", verifyToken, async (req, res) => {
           id: team._id,
           name: team.name,
           members: team.members,
-          creator: team.creator
+          creator: team.creator,
+          createdAt: team.createdAt
         }));
       return serverObj;
     });
 
-    console.log(`✅ Found ${projectServers.length} servers for student ${req.user.id} via team membership`);
+    console.log(`✅ Returning ${projectServers.length} servers with team info`);
 
     res.status(200).json({
       success: true,
@@ -226,7 +282,7 @@ router.get("/student-servers", verifyToken, async (req, res) => {
     });
 
   } catch (err) {
-    console.error("Error fetching student servers:", err);
+    console.error("❌ Error fetching student servers:", err);
     res.status(500).json({ 
       message: "Failed to fetch project servers", 
       error: process.env.NODE_ENV === 'production' ? "Internal server error" : err.message,
@@ -235,9 +291,11 @@ router.get("/student-servers", verifyToken, async (req, res) => {
   }
 });
 
-// ✅ Join project server (OPTIONAL - no longer required)
+// ✅ Join project server (Optional - for students who want to)
 router.post("/join", verifyToken, async (req, res) => {
   try {
+    console.log(`🔗 Student ${req.user.id} attempting to join server with code: ${req.body.code}`);
+
     if (req.user.role !== "student") {
       return res.status(403).json({ 
         message: "Only students can join project servers",
@@ -255,19 +313,25 @@ router.post("/join", verifyToken, async (req, res) => {
     }
 
     const normalizedCode = code.trim().toUpperCase();
+    console.log(`🔍 Looking for server with code: ${normalizedCode}`);
+
     const projectServer = await ProjectServer.findOne({ code: normalizedCode })
       .populate('faculty', 'firstName lastName email');
 
     if (!projectServer) {
+      console.log(`❌ No server found with code: ${normalizedCode}`);
       return res.status(404).json({ 
         message: "Invalid server code. Please check and try again.",
         success: false 
       });
     }
 
+    console.log(`✅ Found server: ${projectServer.title} (${projectServer.code})`);
+
     // Check if already joined
     const student = await Student.findById(req.user.id);
     if (student.joinedServers.includes(projectServer._id)) {
+      console.log(`ℹ️ Student ${req.user.id} already joined server ${normalizedCode}`);
       return res.status(200).json({ 
         message: "You have already joined this project server",
         success: true,
@@ -282,15 +346,14 @@ router.post("/join", verifyToken, async (req, res) => {
       });
     }
 
-    // ✅ OPTIONAL: Still allow joining for those who want to
-    // But make it clear it's not required
+    // Add to joined servers (optional)
     student.joinedServers.push(projectServer._id);
     await student.save();
 
-    console.log(`✅ Student ${req.user.id} optionally joined server ${normalizedCode}`);
+    console.log(`✅ Student ${req.user.id} joined server ${normalizedCode}`);
 
     res.json({
-      message: "Successfully joined project server (optional step - you can create teams directly using server code)",
+      message: "Successfully joined project server (optional step)",
       success: true,
       server: {
         _id: projectServer._id,
@@ -299,11 +362,11 @@ router.post("/join", verifyToken, async (req, res) => {
         code: projectServer.code,
         faculty: projectServer.faculty
       },
-      info: "You can now create teams directly without joining servers first"
+      info: "You can now create teams for this server"
     });
 
   } catch (err) {
-    console.error("Error joining server:", err);
+    console.error("❌ Error joining server:", err);
     res.status(500).json({ 
       message: "Failed to join server", 
       error: process.env.NODE_ENV === 'production' ? "Internal server error" : err.message,
@@ -312,10 +375,11 @@ router.post("/join", verifyToken, async (req, res) => {
   }
 });
 
-// ✅ Get project server details
+// ✅ Get project server details WITH TEAMS AND TASKS
 router.get("/:serverId", verifyToken, async (req, res) => {
   try {
     const { serverId } = req.params;
+    console.log(`📊 Getting details for server: ${serverId} by ${req.user.role} ${req.user.id}`);
 
     const projectServer = await ProjectServer.findById(serverId)
       .populate('faculty', 'firstName lastName email');
@@ -331,10 +395,9 @@ router.get("/:serverId", verifyToken, async (req, res) => {
     let hasAccess = false;
 
     if (req.user.role === 'faculty') {
-      // Faculty can access their own servers
       hasAccess = projectServer.faculty._id.toString() === req.user.id;
     } else {
-      // ✅ UPDATED: Students can access servers if they're in a team for that server
+      // Students can access servers if they're in a team for that server
       const studentTeam = await StudentTeam.findOne({
         members: req.user.id,
         projectServer: projectServer.code
@@ -345,51 +408,44 @@ router.get("/:serverId", verifyToken, async (req, res) => {
     if (!hasAccess) {
       return res.status(403).json({ 
         message: req.user.role === 'faculty' 
-          ? "You can only access your own servers" 
-          : "You need to be in a team for this server to access it",
+          ? "You can only access your own project servers"
+          : "Create or join a team to access this server",
         success: false 
       });
     }
 
-    // Get additional statistics
-    const teamsCount = await StudentTeam.countDocuments({ 
-      projectServer: projectServer.code 
-    });
-    
-    const tasksCount = await Task.countDocuments({ 
-      server: serverId 
-    });
-
-    // Get unique students count
+    // Get teams for this server
     const teams = await StudentTeam.find({ 
       projectServer: projectServer.code 
-    }).populate('members', '_id');
-    
-    const uniqueStudents = new Set();
-    teams.forEach(team => {
-      team.members.forEach(member => {
-        uniqueStudents.add(member._id.toString());
-      });
-    });
+    }).populate('members', 'firstName lastName email');
 
-    const serverWithStats = {
+    // Get tasks for this server
+    const tasks = await Task.find({ 
+      server: serverId 
+    }).populate('team', 'name').populate('faculty', 'firstName lastName');
+
+    console.log(`📊 Server ${projectServer.code}: ${teams.length} teams, ${tasks.length} tasks`);
+
+    const serverWithDetails = {
       ...projectServer.toObject(),
+      teams: teams,
+      tasks: tasks,
       stats: {
-        teamsCount,
-        tasksCount,
-        studentsCount: uniqueStudents.size
+        teamsCount: teams.length,
+        tasksCount: tasks.length,
+        studentsCount: new Set(teams.flatMap(team => team.members.map(m => m._id.toString()))).size
       }
     };
 
-    console.log(`✅ Server details retrieved for ${serverId} by ${req.user.role} ${req.user.id}`);
+    console.log(`✅ Server details loaded successfully`);
 
     res.json({
       success: true,
-      server: serverWithStats
+      server: serverWithDetails
     });
 
   } catch (err) {
-    console.error("Error fetching server details:", err);
+    console.error("❌ Error fetching server details:", err);
     res.status(500).json({ 
       message: "Failed to fetch server details", 
       error: process.env.NODE_ENV === 'production' ? "Internal server error" : err.message,
@@ -458,7 +514,7 @@ router.put("/:serverId", verifyToken, async (req, res) => {
     });
 
   } catch (err) {
-    console.error("Error updating project server:", err);
+    console.error("❌ Error updating project server:", err);
     res.status(500).json({ 
       message: "Failed to update project server", 
       error: process.env.NODE_ENV === 'production' ? "Internal server error" : err.message,
@@ -470,6 +526,8 @@ router.put("/:serverId", verifyToken, async (req, res) => {
 // ✅ Delete project server (Faculty only)
 router.delete("/:serverId", verifyToken, async (req, res) => {
   try {
+    console.log(`🗑️ Faculty ${req.user.id} attempting to delete server: ${req.params.serverId}`);
+
     if (req.user.role !== "faculty") {
       return res.status(403).json({ 
         message: "Only faculty can delete project servers",
@@ -505,6 +563,8 @@ router.delete("/:serverId", verifyToken, async (req, res) => {
       server: serverId 
     });
 
+    console.log(`📊 Server deletion check: ${teamsCount} teams, ${tasksCount} tasks`);
+
     if (teamsCount > 0 || tasksCount > 0) {
       return res.status(400).json({ 
         message: `Cannot delete server with existing teams (${teamsCount}) or tasks (${tasksCount}). Delete teams and tasks first.`,
@@ -521,7 +581,7 @@ router.delete("/:serverId", verifyToken, async (req, res) => {
 
     await ProjectServer.findByIdAndDelete(serverId);
 
-    console.log(`✅ Project server ${serverId} deleted by faculty ${req.user.id}`);
+    console.log(`✅ Project server ${serverId} deleted successfully`);
 
     res.json({
       success: true,
@@ -529,7 +589,7 @@ router.delete("/:serverId", verifyToken, async (req, res) => {
     });
 
   } catch (err) {
-    console.error("Error deleting project server:", err);
+    console.error("❌ Error deleting project server:", err);
     res.status(500).json({ 
       message: "Failed to delete project server", 
       error: process.env.NODE_ENV === 'production' ? "Internal server error" : err.message,
@@ -538,332 +598,30 @@ router.delete("/:serverId", verifyToken, async (req, res) => {
   }
 });
 
-// ✅ Get server analytics/dashboard data
-router.get("/:serverId/analytics", verifyToken, async (req, res) => {
+// ✅ DEBUG: Test server code generation
+router.get("/debug/test-code", verifyToken, async (req, res) => {
   try {
     if (req.user.role !== "faculty") {
-      return res.status(403).json({ 
-        message: "Only faculty can view server analytics",
-        success: false 
-      });
+      return res.status(403).json({ message: "Faculty only" });
     }
 
-    const { serverId } = req.params;
-
-    const projectServer = await ProjectServer.findById(serverId);
-
-    if (!projectServer) {
-      return res.status(404).json({ 
-        message: "Project server not found",
-        success: false 
-      });
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let testCode = '';
+    for (let i = 0; i < 6; i++) {
+      testCode += chars.charAt(Math.floor(Math.random() * chars.length));
     }
 
-    // Verify ownership
-    if (projectServer.faculty.toString() !== req.user.id) {
-      return res.status(403).json({ 
-        message: "You can only view analytics for your own servers",
-        success: false 
-      });
-    }
-
-    // Get detailed analytics
-    const teams = await StudentTeam.find({ 
-      projectServer: projectServer.code 
-    }).populate('members', 'firstName lastName email');
-
-    const tasks = await Task.find({ 
-      server: serverId 
-    }).populate('team', 'name');
-
-    // Calculate metrics
-    const uniqueStudents = new Set();
-    teams.forEach(team => {
-      team.members.forEach(member => {
-        uniqueStudents.add(member._id.toString());
-      });
-    });
-
-    const totalSubmissions = tasks.reduce((sum, task) => sum + task.submissions.length, 0);
-    const gradedSubmissions = tasks.reduce((sum, task) => 
-      sum + task.submissions.filter(sub => sub.status === 'graded').length, 0
-    );
-
-    const activeTasks = tasks.filter(task => task.status === 'active').length;
-    const completedTasks = tasks.filter(task => task.status === 'completed').length;
-
-    // Team performance
-    const teamPerformance = teams.map(team => {
-      const teamTasks = tasks.filter(task => 
-        task.team._id.toString() === team._id.toString()
-      );
-      
-      const teamSubmissions = teamTasks.reduce((sum, task) => 
-        sum + task.submissions.length, 0
-      );
-      
-      const teamGradedSubmissions = teamTasks.reduce((sum, task) => 
-        sum + task.submissions.filter(sub => sub.status === 'graded').length, 0
-      );
-
-      return {
-        teamId: team._id,
-        teamName: team.name,
-        membersCount: team.members.length,
-        tasksAssigned: teamTasks.length,
-        submissionsCount: teamSubmissions,
-        gradedCount: teamGradedSubmissions,
-        completionRate: teamTasks.length > 0 ? 
-          Math.round((teamSubmissions / (teamTasks.length * team.members.length)) * 100) : 0
-      };
-    });
-
-    const analytics = {
-      server: {
-        id: projectServer._id,
-        title: projectServer.title,
-        code: projectServer.code,
-        createdAt: projectServer.createdAt
-      },
-      overview: {
-        studentsCount: uniqueStudents.size,
-        teamsCount: teams.length,
-        tasksCount: tasks.length,
-        activeTasks,
-        completedTasks,
-        totalSubmissions,
-        gradedSubmissions,
-        gradingProgress: totalSubmissions > 0 ? 
-          Math.round((gradedSubmissions / totalSubmissions) * 100) : 0
-      },
-      teamPerformance,
-      recentActivity: {
-        recentTeams: teams.slice(0, 5).map(team => ({
-          name: team.name,
-          membersCount: team.members.length,
-          createdAt: team.createdAt
-        })),
-        recentTasks: tasks.slice(0, 5).map(task => ({
-          title: task.title,
-          teamName: task.team.name,
-          dueDate: task.dueDate,
-          submissionsCount: task.submissions.length
-        }))
-      }
-    };
-
-    console.log(`✅ Analytics retrieved for server ${serverId}`);
+    const existing = await ProjectServer.findOne({ code: testCode });
+    const allCodes = await ProjectServer.find({}, 'code title');
 
     res.json({
-      success: true,
-      analytics
-    });
-
-  } catch (err) {
-    console.error("Error fetching server analytics:", err);
-    res.status(500).json({ 
-      message: "Failed to fetch server analytics", 
-      error: process.env.NODE_ENV === 'production' ? "Internal server error" : err.message,
-      success: false 
-    });
-  }
-});
-
-// ✅ Send team creation reminder (Updated for team-only focus)
-router.post('/:serverId/remind-team-creation', verifyToken, async (req, res) => {
-  console.log('🎯 REMIND TEAM CREATION route hit');
-  
-  try {
-    if (req.user.role !== 'faculty') {
-      return res.status(403).json({
-        message: 'Faculty access required',
-        success: false
-      });
-    }
-
-    const { serverId } = req.params;
-    const { message: customMessage } = req.body;
-    
-    // Verify server exists and faculty owns it
-    const server = await ProjectServer.findById(serverId);
-    if (!server) {
-      return res.status(404).json({
-        message: 'Project server not found',
-        success: false
-      });
-    }
-
-    if (server.faculty.toString() !== req.user.id) {
-      return res.status(403).json({
-        message: 'You can only send reminders for your own servers',
-        success: false
-      });
-    }
-
-    // ✅ UPDATED: Get all teams for this server
-    const teams = await StudentTeam.find({ 
-      projectServer: server.code 
-    }).populate('members', '_id email firstName lastName');
-
-    const studentsInTeams = new Set();
-    const allStudentEmails = new Set();
-    
-    teams.forEach(team => {
-      team.members.forEach(member => {
-        studentsInTeams.add(member._id.toString());
-        allStudentEmails.add(member.email);
-      });
-    });
-
-    // Create reminder message focused on team creation only
-    const defaultMessage = `
-📢 Team Creation Reminder for ${server.title}
-
-Hello! Please create a team for the project server "${server.title}".
-
-🎯 To create a team:
-1. Go to the "Teams" tab in your dashboard
-2. Click "Create Team"
-3. Enter team name and add member emails
-4. Use server code: ${server.code}
-
-🤝 To join an existing team:
-Ask your classmates for their team details or create a new one!
-
-⏰ Creating teams is required for task assignments and collaboration.
-💡 Note: You don't need to join the server first - just create a team directly!
-
-${customMessage ? `\n📝 Additional message from faculty:\n${customMessage}` : ''}
-
-Happy learning! 🚀
-    `.trim();
-
-    console.log(`✅ Team creation reminder prepared for server ${server.code}`);
-    console.log(`✅ Found ${teams.length} existing teams`);
-    
-    res.json({
-      success: true,
-      message: `Team creation reminder prepared for server "${server.title}"`,
-      serverCode: server.code,
-      existingTeams: teams.length,
-      studentsInTeams: studentsInTeams.size,
-      reminderMessage: defaultMessage,
-      info: "Students can create teams directly without joining the server first"
+      testCode,
+      exists: !!existing,
+      totalServers: allCodes.length,
+      allCodes: allCodes.map(s => s.code)
     });
   } catch (error) {
-    console.error('❌ Send team creation reminder error:', error);
-    res.status(500).json({
-      message: error.message || 'Failed to send reminder',
-      success: false
-    });
-  }
-});
-
-// ✅ Get server activity feed
-router.get("/:serverId/activity", verifyToken, async (req, res) => {
-  try {
-    const { serverId } = req.params;
-
-    const projectServer = await ProjectServer.findById(serverId);
-    if (!projectServer) {
-      return res.status(404).json({ 
-        message: "Project server not found",
-        success: false 
-      });
-    }
-
-    // Check access permissions
-    let hasAccess = false;
-
-    if (req.user.role === 'faculty') {
-      hasAccess = projectServer.faculty.toString() === req.user.id;
-    } else {
-      // Students can access if they're in a team for this server
-      const studentTeam = await StudentTeam.findOne({
-        members: req.user.id,
-        projectServer: projectServer.code
-      });
-      hasAccess = !!studentTeam;
-    }
-
-    if (!hasAccess) {
-      return res.status(403).json({ 
-        message: "Access denied",
-        success: false 
-      });
-    }
-
-    // Get recent activity
-    const recentTeams = await StudentTeam.find({ 
-      projectServer: projectServer.code 
-    })
-    .populate('members', 'firstName lastName')
-    .populate('creator', 'firstName lastName')
-    .sort({ createdAt: -1 })
-    .limit(10);
-
-    const recentTasks = await Task.find({ 
-      server: serverId 
-    })
-    .populate('team', 'name')
-    .populate('faculty', 'firstName lastName')
-    .sort({ createdAt: -1 })
-    .limit(10);
-
-    // Get recent submissions (for faculty)
-    let recentSubmissions = [];
-    if (req.user.role === 'faculty') {
-      const tasksWithSubmissions = await Task.find({ 
-        server: serverId,
-        'submissions.0': { $exists: true }
-      })
-      .populate('team', 'name')
-      .populate('submissions.student', 'firstName lastName')
-      .sort({ 'submissions.submittedAt': -1 })
-      .limit(10);
-
-      recentSubmissions = tasksWithSubmissions.flatMap(task => 
-        task.submissions.map(submission => ({
-          taskTitle: task.title,
-          teamName: task.team.name,
-          studentName: `${submission.student.firstName} ${submission.student.lastName}`,
-          submittedAt: submission.submittedAt,
-          status: submission.status
-        }))
-      ).slice(0, 10);
-    }
-
-    const activity = {
-      recentTeams: recentTeams.map(team => ({
-        name: team.name,
-        creator: `${team.creator.firstName} ${team.creator.lastName}`,
-        membersCount: team.members.length,
-        createdAt: team.createdAt
-      })),
-      recentTasks: recentTasks.map(task => ({
-        title: task.title,
-        teamName: task.team.name,
-        createdBy: `${task.faculty.firstName} ${task.faculty.lastName}`,
-        dueDate: task.dueDate,
-        createdAt: task.createdAt
-      })),
-      recentSubmissions
-    };
-
-    console.log(`✅ Activity feed retrieved for server ${serverId}`);
-
-    res.json({
-      success: true,
-      activity
-    });
-
-  } catch (err) {
-    console.error("Error fetching server activity:", err);
-    res.status(500).json({ 
-      message: "Failed to fetch server activity", 
-      error: process.env.NODE_ENV === 'production' ? "Internal server error" : err.message,
-      success: false 
-    });
+    res.status(500).json({ error: error.message });
   }
 });
 
