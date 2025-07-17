@@ -6,6 +6,9 @@ const http = require('http');
 const path = require('path');
 const fs = require('fs');
 
+// Import middleware
+const verifyToken = require("./middleware/verifyToken");
+
 const setupSocket = require('./socket/socketSetup');
 // Try to load optional dependencies
 let rateLimit, helmet, socketIo;
@@ -381,6 +384,9 @@ app.get("/api/status", (req, res) => {
       projectServers: "✅ Working", 
       teams: "✅ Working",
       tasks: "✅ Working",
+      analytics: "✅ Working",
+      notifications: "✅ Working",
+      search: "✅ Working",
       files: fileRoutes ? "✅ Available" : "❌ Disabled",
       calendar: calendarRoutes ? "✅ Available" : "❌ Disabled",
       messaging: messagingRoutes ? "✅ Available" : "❌ Disabled",
@@ -407,6 +413,168 @@ app.use("/api/teamRoutes", teamRoutes);
 app.use("/api/tasks", taskRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use("/api/analytics", analyticsRoutes);
+
+// ✅ NEW: Search endpoint for dashboard
+app.get("/api/search", verifyToken, async (req, res) => {
+  try {
+    const { query, type } = req.query;
+    const userRole = req.user.role;
+    const userId = req.user.id;
+
+    if (!query || query.trim().length < 2) {
+      return res.status(400).json({
+        message: "Search query must be at least 2 characters",
+        success: false
+      });
+    }
+
+    const searchTerm = query.trim();
+    const results = {
+      tasks: [],
+      teams: [],
+      servers: []
+    };
+
+    // Import required models
+    const Task = require("./models/taskSchema");
+    const StudentTeam = require("./models/studentTeamSchema");
+    const ProjectServer = require("./models/projectServerSchema");
+
+    if (userRole === "faculty") {
+      // Faculty search - search across their servers
+      const facultyServers = await ProjectServer.find({ faculty: userId });
+      const serverIds = facultyServers.map(s => s._id);
+      const serverCodes = facultyServers.map(s => s.code);
+
+      // Search servers
+      results.servers = facultyServers.filter(server => 
+        server.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        server.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        server.code.toLowerCase().includes(searchTerm.toLowerCase())
+      ).map(server => ({
+        id: server._id,
+        title: server.title,
+        code: server.code,
+        description: server.description,
+        type: 'server'
+      }));
+
+      // Search tasks
+      const tasks = await Task.find({
+        server: { $in: serverIds },
+        $or: [
+          { title: { $regex: searchTerm, $options: 'i' } },
+          { description: { $regex: searchTerm, $options: 'i' } }
+        ]
+      }).populate('server', 'title code');
+
+      results.tasks = tasks.map(task => ({
+        id: task._id,
+        title: task.title,
+        description: task.description,
+        server: task.server.title,
+        serverCode: task.server.code,
+        type: 'task'
+      }));
+
+      // Search teams
+      const teams = await StudentTeam.find({
+        projectServer: { $in: serverCodes },
+        $or: [
+          { name: { $regex: searchTerm, $options: 'i' } },
+          { description: { $regex: searchTerm, $options: 'i' } }
+        ]
+      }).populate('members', 'firstName lastName');
+
+      results.teams = teams.map(team => ({
+        id: team._id,
+        name: team.name,
+        description: team.description,
+        memberCount: team.members.length,
+        serverCode: team.projectServer,
+        type: 'team'
+      }));
+
+    } else if (userRole === "student") {
+      // Student search - search within their teams/servers
+      const studentTeams = await StudentTeam.find({ members: userId });
+      const serverCodes = studentTeams.map(t => t.projectServer);
+      const servers = await ProjectServer.find({ code: { $in: serverCodes } });
+      const serverIds = servers.map(s => s._id);
+
+      // Search teams student is part of
+      results.teams = studentTeams.filter(team =>
+        team.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (team.description && team.description.toLowerCase().includes(searchTerm.toLowerCase()))
+      ).map(team => ({
+        id: team._id,
+        name: team.name,
+        description: team.description,
+        memberCount: team.members.length,
+        serverCode: team.projectServer,
+        type: 'team'
+      }));
+
+      // Search tasks from student's servers
+      const tasks = await Task.find({
+        server: { $in: serverIds },
+        $or: [
+          { title: { $regex: searchTerm, $options: 'i' } },
+          { description: { $regex: searchTerm, $options: 'i' } }
+        ]
+      }).populate('server', 'title code');
+
+      results.tasks = tasks.map(task => ({
+        id: task._id,
+        title: task.title,
+        description: task.description,
+        server: task.server.title,
+        serverCode: task.server.code,
+        dueDate: task.dueDate,
+        type: 'task'
+      }));
+
+      // Search servers student has access to
+      results.servers = servers.filter(server =>
+        server.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (server.description && server.description.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        server.code.toLowerCase().includes(searchTerm.toLowerCase())
+      ).map(server => ({
+        id: server._id,
+        title: server.title,
+        code: server.code,
+        description: server.description,
+        type: 'server'
+      }));
+    }
+
+    // Limit results
+    results.tasks = results.tasks.slice(0, 10);
+    results.teams = results.teams.slice(0, 10);
+    results.servers = results.servers.slice(0, 10);
+
+    const totalResults = results.tasks.length + results.teams.length + results.servers.length;
+
+    console.log(`🔍 Search "${searchTerm}" by ${userRole} ${userId}: ${totalResults} results`);
+
+    res.json({
+      success: true,
+      results,
+      query: searchTerm,
+      totalResults,
+      message: totalResults > 0 ? `Found ${totalResults} results` : "No results found"
+    });
+
+  } catch (err) {
+    console.error("❌ Search error:", err);
+    res.status(500).json({
+      message: "Search failed",
+      error: process.env.NODE_ENV === 'production' ? "Internal server error" : err.message,
+      success: false
+    });
+  }
+});
+
 // Optional feature routes (only if modules exist)
 if (fileRoutes) {
   app.use("/api/files", fileRoutes);
@@ -533,6 +701,20 @@ app.use('/api/*', (req, res) => {
         'GET /api/tasks/:taskId/submissions',
         'PUT /api/tasks/:taskId',
         'DELETE /api/tasks/:taskId'
+      ],
+      analytics: [
+        'GET /api/analytics/faculty',
+        'GET /api/analytics/student',
+        'GET /api/analytics/server/:serverId',
+        'GET /api/analytics/platform'
+      ],
+      notifications: [
+        'GET /api/notifications',
+        'PATCH /api/notifications/:notificationId/read',
+        'PATCH /api/notifications/mark-all-read'
+      ],
+      search: [
+        'GET /api/search?query=searchTerm&type=faculty|student'
       ],
       optional: {
         files: fileRoutes ? [
@@ -736,6 +918,9 @@ mongoose.connect(MONGO_URI, {
       console.log(`   🏢 Project Servers: ✅ Active`);
       console.log(`   👥 Teams: ✅ Active`);
       console.log(`   📝 Tasks: ✅ Active`);
+      console.log(`   📊 Analytics: ✅ Active`);
+      console.log(`   🔔 Notifications: ✅ Active`);
+      console.log(`   🔍 Search: ✅ Active`);
       console.log(`   📎 File Uploads: ${fileRoutes ? '✅ Active' : '❌ Disabled'}`);
       console.log(`   📅 Calendar: ${calendarRoutes ? '✅ Active' : '❌ Disabled'}`);
       console.log(`   💬 Messaging: ${messagingRoutes ? '✅ Active' : '❌ Disabled'}`);
@@ -756,6 +941,9 @@ mongoose.connect(MONGO_URI, {
       console.log(`   🏢 Servers: /api/projectServers/*`);
       console.log(`   👥 Teams: /api/teamRoutes/*`);
       console.log(`   📝 Tasks: /api/tasks/*`);
+      console.log(`   📊 Analytics: /api/analytics/*`);
+      console.log(`   🔔 Notifications: /api/notifications/*`);
+      console.log(`   🔍 Search: /api/search`);
       
       if (fileRoutes) console.log(`   📎 Files: /api/files/*`);
       if (calendarRoutes) console.log(`   📅 Calendar: /api/calendar/*`);
