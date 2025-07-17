@@ -1,8 +1,4 @@
-// 🔧 COMPLETE FIX FOR BOTH FRONTEND AND BACKEND
-
-// ===== 1. FRONTEND FIX: TaskCreator.jsx =====
-// Replace your TaskCreator component with this corrected version:
-
+// ===== 2. frontend/src/components/TaskManagement/TaskCreator.jsx (COMPLETE FILE) =====
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
   X, 
@@ -22,19 +18,19 @@ import {
 } from 'lucide-react';
 
 const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
-  // ✅ FIXED: Form state with EMPTY allowedFileTypes array
+  // ✅ FIXED: Form state with proper array initialization
   const [formData, setFormData] = useState({
     title: '',
     description: '',
     dueDate: '',
     maxPoints: 100,
     assignmentType: 'team',
-    teamIds: [],
+    teamIds: [], // ✅ Always an array
     assignToAll: false,
     allowLateSubmissions: false,
     maxAttempts: 1,
     allowFileUpload: true,
-    allowedFileTypes: [], // ✅ FIXED: Start with empty array
+    allowedFileTypes: ['pdf', 'doc', 'docx'], // ✅ Default to common types
     maxFileSize: 10485760, // 10MB
     priority: 'medium'
   });
@@ -49,7 +45,7 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
   // Constants
   const API_BASE = process.env.REACT_APP_API_BASE_URL || 'http://localhost:5000/api';
   
-  // ✅ FIXED: File types that exactly match backend schema
+  // ✅ File types that match backend validation
   const fileTypeOptions = [
     { value: 'pdf', label: 'PDF' },
     { value: 'doc', label: 'Word Doc' },
@@ -69,6 +65,15 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
     { value: 'high', label: 'High', color: 'text-orange-600 bg-orange-50' },
     { value: 'urgent', label: 'Urgent', color: 'text-red-600 bg-red-50' }
   ];
+
+  // ✅ SAFETY: Ensure arrays are always arrays
+  useEffect(() => {
+    setFormData(prev => ({
+      ...prev,
+      teamIds: Array.isArray(prev.teamIds) ? prev.teamIds : [],
+      allowedFileTypes: Array.isArray(prev.allowedFileTypes) ? prev.allowedFileTypes : ['pdf', 'doc', 'docx']
+    }));
+  }, []);
 
   // Load teams on component mount
   useEffect(() => {
@@ -96,7 +101,7 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
         if (data.teams.length === 0) {
           setErrors(prev => ({ 
             ...prev, 
-            teams: 'No teams found in this server. Students need to create teams first.' 
+            teams: 'No teams found in this server. Students need to create teams first.'
           }));
         }
       } else {
@@ -116,7 +121,7 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
     }
   }, [serverId, API_BASE]);
 
-  // ✅ FIXED: Validation with file types check
+  // ✅ FIXED: Validation with proper array checks
   const validateForm = () => {
     const newErrors = {};
 
@@ -146,7 +151,9 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
       }
     }
 
-    if (formData.assignmentType === 'team' && !formData.assignToAll && formData.teamIds.length === 0) {
+    // ✅ SAFETY: Check if teamIds is array and has length
+    const teamIds = Array.isArray(formData.teamIds) ? formData.teamIds : [];
+    if (formData.assignmentType === 'team' && !formData.assignToAll && teamIds.length === 0) {
       newErrors.teams = 'Please select at least one team or choose "Assign to All Teams"';
     }
 
@@ -158,8 +165,9 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
       newErrors.maxAttempts = 'Maximum attempts must be between 1 and 10';
     }
 
-    // ✅ FIXED: File types validation
-    if (formData.allowFileUpload && formData.allowedFileTypes.length === 0) {
+    // ✅ SAFETY: Check if allowedFileTypes is array
+    const allowedFileTypes = Array.isArray(formData.allowedFileTypes) ? formData.allowedFileTypes : [];
+    if (formData.allowFileUpload && allowedFileTypes.length === 0) {
       newErrors.allowedFileTypes = 'Please select at least one allowed file type when file upload is enabled';
     }
 
@@ -167,24 +175,34 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
     return Object.keys(newErrors).length === 0;
   };
 
-  // ✅ FIXED: Form handlers
+  // ✅ FIXED: Safe form handlers
   const handleInputChange = (e) => {
     const { name, value, type, checked } = e.target;
     
     if (name === 'teamIds') {
-      setFormData(prev => ({
-        ...prev,
-        teamIds: checked 
-          ? [...prev.teamIds, value]
-          : prev.teamIds.filter(id => id !== value)
-      }));
+      setFormData(prev => {
+        // ✅ SAFETY: Ensure teamIds is always an array
+        const currentTeamIds = Array.isArray(prev.teamIds) ? prev.teamIds : [];
+        
+        return {
+          ...prev,
+          teamIds: checked 
+            ? [...currentTeamIds, value]
+            : currentTeamIds.filter(id => id !== value)
+        };
+      });
     } else if (name === 'allowedFileTypes') {
-      setFormData(prev => ({
-        ...prev,
-        allowedFileTypes: checked
-          ? [...prev.allowedFileTypes, value]
-          : prev.allowedFileTypes.filter(type => type !== value)
-      }));
+      setFormData(prev => {
+        // ✅ SAFETY: Ensure allowedFileTypes is always an array
+        const currentFileTypes = Array.isArray(prev.allowedFileTypes) ? prev.allowedFileTypes : [];
+        
+        return {
+          ...prev,
+          allowedFileTypes: checked
+            ? [...currentFileTypes, value]
+            : currentFileTypes.filter(type => type !== value)
+        };
+      });
       
       // Clear error when user selects file types
       if (checked && errors.allowedFileTypes) {
@@ -221,11 +239,12 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
     }));
   };
 
-  // ✅ FIXED: Submit handler
+  // ✅ FIXED: Submit handler with debugging
   const handleSubmit = async (e) => {
     e.preventDefault();
     
     console.log('🔍 Form submission - allowedFileTypes:', formData.allowedFileTypes);
+    console.log('🔍 Form submission - teamIds:', formData.teamIds);
     
     if (!validateForm()) {
       return;
@@ -242,11 +261,11 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
         maxPoints: parseInt(formData.maxPoints),
         assignmentType: 'team',
         assignToAll: formData.assignToAll,
-        teamIds: formData.assignToAll ? [] : formData.teamIds,
+        teamIds: formData.assignToAll ? [] : Array.isArray(formData.teamIds) ? formData.teamIds : [],
         allowLateSubmissions: formData.allowLateSubmissions,
         maxAttempts: parseInt(formData.maxAttempts),
         allowFileUpload: formData.allowFileUpload,
-        allowedFileTypes: formData.allowedFileTypes, // ✅ This should work now
+        allowedFileTypes: Array.isArray(formData.allowedFileTypes) ? formData.allowedFileTypes : [],
         maxFileSize: formData.maxFileSize,
         priority: formData.priority
       };
@@ -278,46 +297,44 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
     }
   };
 
-  // Get minimum date (tomorrow)
-  const getMinDate = () => {
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    return tomorrow.toISOString().slice(0, 16);
+  // Generate minimum date (current date + 1 hour)
+  const getMinDateTime = () => {
+    const now = new Date();
+    now.setHours(now.getHours() + 1);
+    return now.toISOString().slice(0, 16);
   };
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
-        {/* Header */}
         <div className="sticky top-0 bg-white border-b px-6 py-4 flex items-center justify-between">
           <div>
             <h2 className="text-2xl font-bold text-gray-900">Create New Task</h2>
-            <p className="text-sm text-gray-600">Server: {serverTitle}</p>
+            <p className="text-gray-600">Server: {serverTitle}</p>
           </div>
           <button
             onClick={onClose}
             className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
           >
-            <X className="w-5 h-5" />
+            <X className="w-6 h-6 text-gray-600" />
           </button>
         </div>
 
-        {/* Content */}
         <div className="p-6">
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* Basic Information */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="md:col-span-2">
+              <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  <FileText className="w-4 h-4 inline mr-2" />
-                  Task Title
+                  <Target className="w-4 h-4 inline mr-2" />
+                  Task Title *
                 </label>
                 <input
                   type="text"
                   name="title"
                   value={formData.title}
                   onChange={handleInputChange}
-                  placeholder="Enter task title..."
+                  placeholder="Enter task title"
                   className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors ${
                     errors.title ? 'border-red-300 bg-red-50' : 'border-gray-300'
                   }`}
@@ -327,37 +344,18 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
                 )}
               </div>
 
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Description
-                </label>
-                <textarea
-                  name="description"
-                  value={formData.description}
-                  onChange={handleInputChange}
-                  rows={4}
-                  placeholder="Describe the task requirements..."
-                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors resize-none ${
-                    errors.description ? 'border-red-300 bg-red-50' : 'border-gray-300'
-                  }`}
-                />
-                {errors.description && (
-                  <p className="text-red-600 text-sm mt-1">{errors.description}</p>
-                )}
-              </div>
-
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   <Calendar className="w-4 h-4 inline mr-2" />
-                  Due Date
+                  Due Date *
                 </label>
                 <input
                   type="datetime-local"
                   name="dueDate"
                   value={formData.dueDate}
                   onChange={handleInputChange}
-                  min={getMinDate()}
-                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent ${
+                  min={getMinDateTime()}
+                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors ${
                     errors.dueDate ? 'border-red-300 bg-red-50' : 'border-gray-300'
                   }`}
                 />
@@ -365,7 +363,31 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
                   <p className="text-red-600 text-sm mt-1">{errors.dueDate}</p>
                 )}
               </div>
+            </div>
 
+            {/* Description */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                <FileText className="w-4 h-4 inline mr-2" />
+                Task Description *
+              </label>
+              <textarea
+                name="description"
+                value={formData.description}
+                onChange={handleInputChange}
+                rows={4}
+                placeholder="Describe the task requirements, objectives, and any specific instructions..."
+                className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors resize-none ${
+                  errors.description ? 'border-red-300 bg-red-50' : 'border-gray-300'
+                }`}
+              />
+              {errors.description && (
+                <p className="text-red-600 text-sm mt-1">{errors.description}</p>
+              )}
+            </div>
+
+            {/* Points and Attempts */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   <Award className="w-4 h-4 inline mr-2" />
@@ -378,12 +400,32 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
                   onChange={handleInputChange}
                   min="1"
                   max="1000"
-                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent ${
+                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors ${
                     errors.maxPoints ? 'border-red-300 bg-red-50' : 'border-gray-300'
                   }`}
                 />
                 {errors.maxPoints && (
                   <p className="text-red-600 text-sm mt-1">{errors.maxPoints}</p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Maximum Attempts
+                </label>
+                <input
+                  type="number"
+                  name="maxAttempts"
+                  value={formData.maxAttempts}
+                  onChange={handleInputChange}
+                  min="1"
+                  max="10"
+                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors ${
+                    errors.maxAttempts ? 'border-red-300 bg-red-50' : 'border-gray-300'
+                  }`}
+                />
+                {errors.maxAttempts && (
+                  <p className="text-red-600 text-sm mt-1">{errors.maxAttempts}</p>
                 )}
               </div>
 
@@ -403,26 +445,6 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
                     </option>
                   ))}
                 </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Maximum Attempts
-                </label>
-                <input
-                  type="number"
-                  name="maxAttempts"
-                  value={formData.maxAttempts}
-                  onChange={handleInputChange}
-                  min="1"
-                  max="10"
-                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent ${
-                    errors.maxAttempts ? 'border-red-300 bg-red-50' : 'border-gray-300'
-                  }`}
-                />
-                {errors.maxAttempts && (
-                  <p className="text-red-600 text-sm mt-1">{errors.maxAttempts}</p>
-                )}
               </div>
             </div>
 
@@ -477,33 +499,39 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
                   {!formData.assignToAll && (
                     <div className="border rounded-lg p-4 bg-white max-h-48 overflow-y-auto">
                       <div className="space-y-3">
-                        {teams.map(team => (
-                          <label key={team._id} className="flex items-start cursor-pointer group">
-                            <input
-                              type="checkbox"
-                              name="teamIds"
-                              value={team._id}
-                              checked={formData.teamIds.includes(team._id)}
-                              onChange={handleInputChange}
-                              className="mr-3 mt-1 text-purple-600"
-                            />
-                            <div className="flex-1">
-                              <div className="flex items-center justify-between">
-                                <span className="font-medium text-gray-900 group-hover:text-purple-600">
-                                  {team.name}
-                                </span>
-                                <span className="text-sm text-gray-500">
-                                  {team.members?.length || 0} members
-                                </span>
+                        {teams.map(team => {
+                          // ✅ SAFETY CHECK: Ensure teamIds is an array before using .includes()
+                          const currentTeamIds = Array.isArray(formData.teamIds) ? formData.teamIds : [];
+                          const isChecked = currentTeamIds.includes(team._id);
+                          
+                          return (
+                            <label key={team._id} className="flex items-start cursor-pointer group">
+                              <input
+                                type="checkbox"
+                                name="teamIds"
+                                value={team._id}
+                                checked={isChecked}
+                                onChange={handleInputChange}
+                                className="mr-3 mt-1 text-purple-600"
+                              />
+                              <div className="flex-1">
+                                <div className="flex items-center justify-between">
+                                  <span className="font-medium text-gray-900 group-hover:text-purple-600">
+                                    {team.name}
+                                  </span>
+                                  <span className="text-sm text-gray-500">
+                                    {team.members?.length || 0} members
+                                  </span>
+                                </div>
+                                {team.description && (
+                                  <p className="text-sm text-gray-600 mt-1">
+                                    {team.description}
+                                  </p>
+                                )}
                               </div>
-                              {team.description && (
-                                <p className="text-sm text-gray-600 mt-1">
-                                  {team.description}
-                                </p>
-                              )}
-                            </div>
-                          </label>
-                        ))}
+                            </label>
+                          );
+                        })}
                       </div>
                     </div>
                   )}
@@ -546,23 +574,26 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
                     <div className="ml-6 space-y-4">
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Allowed File Types ({formData.allowedFileTypes.length} selected)
+                          Allowed File Types ({Array.isArray(formData.allowedFileTypes) ? formData.allowedFileTypes.length : 0} selected)
                         </label>
                         
                         <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                          {fileTypeOptions.map(option => (
-                            <label key={option.value} className="flex items-center cursor-pointer p-2 border rounded hover:bg-gray-50">
-                              <input
-                                type="checkbox"
-                                name="allowedFileTypes"
-                                value={option.value}
-                                checked={formData.allowedFileTypes.includes(option.value)}
-                                onChange={handleInputChange}
-                                className="mr-2 text-purple-600"
-                              />
-                              <span className="text-sm">{option.label}</span>
-                            </label>
-                          ))}
+                          {fileTypeOptions.map(option => {
+                            const allowedTypes = Array.isArray(formData.allowedFileTypes) ? formData.allowedFileTypes : [];
+                            return (
+                              <label key={option.value} className="flex items-center cursor-pointer p-2 border rounded hover:bg-gray-50">
+                                <input
+                                  type="checkbox"
+                                  name="allowedFileTypes"
+                                  value={option.value}
+                                  checked={allowedTypes.includes(option.value)}
+                                  onChange={handleInputChange}
+                                  className="mr-2 text-purple-600"
+                                />
+                                <span className="text-sm">{option.label}</span>
+                              </label>
+                            );
+                          })}
                         </div>
                         
                         {errors.allowedFileTypes && (
@@ -613,8 +644,7 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
                 Cancel
               </button>
               <button
-                type="button"
-                onClick={handleSubmit}
+                type="submit"
                 disabled={loading || teams.length === 0}
                 className="px-6 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-lg hover:from-purple-700 hover:to-indigo-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
               >

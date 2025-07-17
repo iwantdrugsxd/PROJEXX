@@ -38,12 +38,33 @@ const app = express();
 const server = http.createServer(app);
 const PORT = process.env.PORT || 5000;
 
-// Create uploads directory if it doesn't exist
-const uploadsDir = path.join(__dirname, 'uploads');
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
-  console.log('📁 Created uploads directory');
-}
+// ✅ FIXED: Create all necessary upload directories
+const createUploadDirectories = () => {
+  const baseUploadsDir = path.join(__dirname, 'uploads');
+  const directories = [
+    baseUploadsDir,
+    path.join(baseUploadsDir, 'submissions'),
+    path.join(baseUploadsDir, 'faculty'),
+    path.join(baseUploadsDir, 'student'),
+    path.join(baseUploadsDir, 'profiles'),
+    path.join(baseUploadsDir, 'temp')
+  ];
+
+  directories.forEach(dir => {
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+      console.log(`📁 Created directory: ${dir}`);
+    } else {
+      console.log(`📁 Directory exists: ${dir}`);
+    }
+  });
+
+  console.log('✅ All upload directories verified/created');
+  return baseUploadsDir;
+};
+
+// Call this function before setting up routes
+const uploadsDir = createUploadDirectories();
 
 // Socket.io setup (if available)
 let io;
@@ -247,14 +268,33 @@ app.use(express.urlencoded({
 
 app.use(cookieParser());
 
-// Serve static files with security headers
+// ✅ FIXED: Serve static files with security headers and proper paths
 app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
-  setHeaders: (res, path) => {
+  setHeaders: (res, filePath) => {
     // Prevent execution of uploaded files
     res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('Content-Disposition', 'attachment');
+    
+    // Only set attachment for certain file types, allow images to display
+    const ext = path.extname(filePath).toLowerCase();
+    const imageTypes = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'];
+    const documentTypes = ['.pdf', '.doc', '.docx', '.txt', '.zip', '.rar'];
+    
+    if (documentTypes.includes(ext)) {
+      res.setHeader('Content-Disposition', 'attachment');
+    } else if (imageTypes.includes(ext)) {
+      res.setHeader('Content-Disposition', 'inline');
+    }
+    
+    // Set appropriate cache headers
+    res.setHeader('Cache-Control', 'public, max-age=31536000'); // 1 year for static files
   }
 }));
+
+// ✅ ADDITIONAL: Serve specific upload subdirectories
+app.use('/uploads/submissions', express.static(path.join(__dirname, 'uploads/submissions')));
+app.use('/uploads/profiles', express.static(path.join(__dirname, 'uploads/profiles')));
+app.use('/uploads/faculty', express.static(path.join(__dirname, 'uploads/faculty')));
+app.use('/uploads/student', express.static(path.join(__dirname, 'uploads/student')));
 
 // Request logging (only in development)
 if (process.env.NODE_ENV !== 'production') {
@@ -276,10 +316,19 @@ if (process.env.NODE_ENV !== 'production') {
   });
 }
 
-// Enhanced Health Check
+// ✅ ENHANCED: Health Check with upload directory verification
 app.get("/", (req, res) => {
   const uptime = process.uptime();
   const memoryUsage = process.memoryUsage();
+  
+  // Check upload directories
+  const uploadDirStatus = {
+    base: fs.existsSync(uploadsDir),
+    submissions: fs.existsSync(path.join(uploadsDir, 'submissions')),
+    faculty: fs.existsSync(path.join(uploadsDir, 'faculty')),
+    student: fs.existsSync(path.join(uploadsDir, 'student')),
+    profiles: fs.existsSync(path.join(uploadsDir, 'profiles'))
+  };
   
   res.status(200).json({ 
     message: "✅ ProjectFlow Backend Server",
@@ -295,6 +344,11 @@ app.get("/", (req, res) => {
     database: {
       status: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
       name: mongoose.connection.db ? mongoose.connection.db.databaseName : 'not connected'
+    },
+    uploads: {
+      baseDirectory: uploadsDir,
+      directories: uploadDirStatus,
+      allExist: Object.values(uploadDirStatus).every(exists => exists)
     },
     features: {
       socketIO: !!socketIo,
@@ -351,6 +405,7 @@ app.use("/api/projectServers", projectServerRoutes);
 app.use("/api/teamRoutes", teamRoutes);
 app.use("/api/tasks", taskRoutes);
 app.use('/api/notifications', notificationRoutes);
+
 // Optional feature routes (only if modules exist)
 if (fileRoutes) {
   app.use("/api/files", fileRoutes);
@@ -388,6 +443,43 @@ app.get("/api/export/user-data", (req, res) => {
   res.setHeader('Content-Type', 'application/json');
   res.setHeader('Content-Disposition', `attachment; filename="projectflow-data-${new Date().toISOString().split('T')[0]}.json"`);
   res.json(userData);
+});
+
+// ✅ ADDITIONAL: File download endpoint with proper security
+app.get("/api/download/:type/:filename", (req, res) => {
+  const { type, filename } = req.params;
+  const allowedTypes = ['submissions', 'faculty', 'student', 'profiles'];
+  
+  if (!allowedTypes.includes(type)) {
+    return res.status(400).json({
+      message: 'Invalid file type',
+      success: false
+    });
+  }
+  
+  const filePath = path.join(uploadsDir, type, filename);
+  
+  // Security check: ensure file is within uploads directory
+  const resolvedPath = path.resolve(filePath);
+  const uploadsPath = path.resolve(uploadsDir);
+  
+  if (!resolvedPath.startsWith(uploadsPath)) {
+    return res.status(403).json({
+      message: 'Access denied',
+      success: false
+    });
+  }
+  
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).json({
+      message: 'File not found',
+      success: false
+    });
+  }
+  
+  // Set appropriate headers and send file
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  res.sendFile(filePath);
 });
 
 // Enhanced 404 handler for API routes
@@ -540,6 +632,15 @@ app.use((err, req, res, next) => {
   if (err.code === 'LIMIT_UNEXPECTED_FILE') {
     return res.status(400).json({ 
       message: 'Unexpected file field',
+      success: false,
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  // ✅ ADDITIONAL: ENOENT file errors
+  if (err.code === 'ENOENT') {
+    return res.status(404).json({
+      message: 'File not found on server',
       success: false,
       timestamp: new Date().toISOString()
     });
