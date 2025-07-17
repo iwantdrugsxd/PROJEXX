@@ -20,6 +20,8 @@ function App() {
 
   const checkAuthStatus = async () => {
     try {
+      console.log('🔍 Checking authentication status...');
+      
       // Check faculty authentication first
       const facultyResponse = await fetch(`${API_BASE}/faculty/dashboard`, {
         credentials: 'include'
@@ -27,6 +29,7 @@ function App() {
       
       if (facultyResponse.ok) {
         const data = await facultyResponse.json();
+        console.log('✅ Faculty authentication successful');
         setUser({ ...data, role: 'faculty' });
         setCurrentView('dashboard');
         setUserType('faculty');
@@ -41,6 +44,7 @@ function App() {
       
       if (studentResponse.ok) {
         const data = await studentResponse.json();
+        console.log('✅ Student authentication successful');
         setUser({ ...data, role: 'student' });
         setCurrentView('dashboard');
         setUserType('student');
@@ -49,19 +53,18 @@ function App() {
       }
       
       // No active session
+      console.log('ℹ️ No active session found');
       setLoading(false);
     } catch (error) {
-      console.log('No active session');
+      console.log('❌ Authentication check failed:', error);
       setLoading(false);
     }
   };
 
-  // ✅ CORRECTED: Single logout function with proper role-based endpoints
   const handleLogout = async () => {
     try {
-      // Use correct endpoint based on user role
       const endpoint = user?.role === 'faculty' ? 'faculty' : 'student';
-      console.log(`Logging out ${endpoint}...`);
+      console.log(`🔓 Logging out ${endpoint}...`);
       
       const response = await fetch(`${API_BASE}/${endpoint}/logout`, {
         method: 'POST',
@@ -78,12 +81,12 @@ function App() {
       }
       
     } catch (error) {
-      console.error('Logout API failed:', error);
+      console.error('❌ Logout API failed:', error);
     } finally {
       // Clear all client-side state regardless of API response
       setUser(null);
       setCurrentView('landing');
-      setUserType('student'); // Reset to default
+      setUserType('student');
       
       // Clear localStorage
       localStorage.removeItem('authToken');
@@ -100,10 +103,19 @@ function App() {
 
   // Handle successful login
   const handleLogin = (userData) => {
+    console.log('✅ Login successful:', userData);
     setUser(userData);
     setCurrentView('dashboard');
     setUserType(userData.role);
   };
+
+  // ✅ DEBUGGING: Add console logs to see what's happening
+  console.log('🔍 App render state:', {
+    loading,
+    currentView,
+    userType,
+    hasUser: !!user
+  });
 
   // Loading screen
   if (loading) {
@@ -120,6 +132,7 @@ function App() {
     );
   }
 
+  // ✅ MAIN APP RENDER
   return (
     <AuthContext.Provider value={{ 
       user, 
@@ -128,17 +141,88 @@ function App() {
       setUserType, 
       currentView, 
       setCurrentView,
-      handleLogout  // ✅ Provide logout function to all components
+      handleLogin,
+      handleLogout
     }}>
       <div className="min-h-screen bg-white">
-        {currentView === 'landing' && <LandingPage />}
-        {currentView === 'login' && <LoginPage />}
-        {currentView === 'register' && <RegisterPage />}
-        {currentView === 'dashboard' && userType === 'student' && (
-          <StudentDashboard user={user} onLogout={handleLogout} />
+        {/* ✅ DEBUGGING: Show current view in console and as hidden div */}
+        <div style={{ display: 'none' }}>
+          Current View: {currentView}, User Type: {userType}, User: {user ? 'Yes' : 'No'}
+        </div>
+
+        {/* ✅ LANDING PAGE */}
+        {currentView === 'landing' && (
+          <div>
+            {console.log('🏠 Rendering LandingPage')}
+            <LandingPage 
+              onLogin={() => setCurrentView('login')}
+              onRegister={() => setCurrentView('register')}
+            />
+          </div>
         )}
+
+        {/* ✅ LOGIN PAGE */}
+        {currentView === 'login' && (
+          <div>
+            {console.log('🔑 Rendering LoginPage')}
+            <LoginPage 
+              onLogin={handleLogin}
+              onBack={() => setCurrentView('landing')}
+              onRegister={() => setCurrentView('register')}
+              setUserType={setUserType}
+            />
+          </div>
+        )}
+
+        {/* ✅ REGISTER PAGE */}
+        {currentView === 'register' && (
+          <div>
+            {console.log('📝 Rendering RegisterPage')}
+            <RegisterPage 
+              onRegister={handleLogin}
+              onBack={() => setCurrentView('landing')}
+              onLogin={() => setCurrentView('login')}
+              setUserType={setUserType}
+            />
+          </div>
+        )}
+
+        {/* ✅ STUDENT DASHBOARD */}
+        {currentView === 'dashboard' && userType === 'student' && (
+          <div>
+            {console.log('🎓 Rendering StudentDashboard')}
+            <StudentDashboard 
+              user={user} 
+              onLogout={handleLogout} 
+            />
+          </div>
+        )}
+
+        {/* ✅ FACULTY DASHBOARD */}
         {currentView === 'dashboard' && userType === 'faculty' && (
-          <FacultyDashboard user={user} onLogout={handleLogout} />
+          <div>
+            {console.log('👨‍🏫 Rendering FacultyDashboard')}
+            <FacultyDashboard 
+              user={user} 
+              onLogout={handleLogout} 
+            />
+          </div>
+        )}
+
+        {/* ✅ FALLBACK: If no view matches */}
+        {!['landing', 'login', 'register', 'dashboard'].includes(currentView) && (
+          <div className="min-h-screen bg-red-50 flex items-center justify-center">
+            <div className="text-center">
+              <h1 className="text-2xl font-bold text-red-600 mb-4">Error: Invalid View</h1>
+              <p className="text-red-500 mb-4">Current view: {currentView}</p>
+              <button 
+                onClick={() => setCurrentView('landing')}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+              >
+                Go to Landing Page
+              </button>
+            </div>
+          </div>
         )}
       </div>
     </AuthContext.Provider>

@@ -1,10 +1,8 @@
-// ===== 3. frontend/src/components/TaskManagement/StudentTaskManager.jsx (COMPLETE FILE) =====
 import React, { useState, useEffect } from 'react';
 import { 
   Calendar, 
   Clock, 
   Award, 
-  Users, 
   FileText, 
   Upload, 
   X, 
@@ -14,8 +12,12 @@ import {
   CheckCircle,
   Loader2,
   File,
-  Trash2
+  Trash2,
+  RefreshCw,
+  Eye
 } from 'lucide-react';
+// ✅ Import API_BASE from App.js (adjust path based on your folder structure)
+import { API_BASE } from '../../App';
 
 const StudentTaskManager = () => {
   const [tasks, setTasks] = useState([]);
@@ -23,6 +25,7 @@ const StudentTaskManager = () => {
   const [selectedTask, setSelectedTask] = useState(null);
   const [showSubmissionModal, setShowSubmissionModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [submissionData, setSubmissionData] = useState({
     comment: '',
     collaborators: [''],
@@ -30,15 +33,19 @@ const StudentTaskManager = () => {
   });
   const [errors, setErrors] = useState({});
 
-  const API_BASE = process.env.REACT_APP_API_BASE_URL || 'http://localhost:5000/api';
-
   useEffect(() => {
     loadTasks();
   }, []);
 
+  // ✅ ENHANCED: Load tasks with better error handling and debugging
   const loadTasks = async () => {
     setLoading(true);
+    setTasks([]); // Clear existing tasks first
+    
     try {
+      console.log('🔄 Loading tasks from server...');
+      console.log('🔗 API URL:', `${API_BASE}/tasks/student-tasks`);
+      
       const response = await fetch(`${API_BASE}/tasks/student-tasks`, {
         credentials: 'include',
         headers: {
@@ -46,17 +53,59 @@ const StudentTaskManager = () => {
         }
       });
 
+      console.log('📡 Task loading response status:', response.status);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ Failed to load tasks:', errorText);
+        
+        if (response.status === 401) {
+          console.error('❌ Authentication failed - please log in again');
+          setErrors({ general: 'Please log in again to access your tasks.' });
+        } else {
+          setErrors({ general: 'Failed to load tasks. Please try again.' });
+        }
+        return;
+      }
+
       const data = await response.json();
-      if (data.success) {
-        setTasks(data.tasks || []);
+      console.log('📋 Raw task data received:', data);
+
+      if (data.success && data.tasks) {
+        console.log(`✅ Loaded ${data.tasks.length} tasks`);
+        
+        // Log each task for debugging
+        data.tasks.forEach((task, index) => {
+          console.log(`Task ${index + 1}:`, {
+            id: task._id,
+            title: task.title,
+            server: task.server?.title,
+            team: task.team?.name,
+            dueDate: task.dueDate,
+            status: task.submissionStatus
+          });
+        });
+        
+        setTasks(data.tasks);
+        setErrors({}); // Clear any previous errors
       } else {
-        console.error('Failed to load tasks:', data.message);
+        console.log('ℹ️ No tasks available or invalid response:', data.message);
+        setTasks([]);
       }
     } catch (error) {
-      console.error('Error loading tasks:', error);
+      console.error('❌ Error loading tasks:', error);
+      setTasks([]);
+      setErrors({ general: 'Network error. Please check your connection.' });
     } finally {
       setLoading(false);
     }
+  };
+
+  // ✅ Manual refresh function
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await loadTasks();
+    setRefreshing(false);
   };
 
   const getStatusColor = (status) => {
@@ -118,288 +167,393 @@ const StudentTaskManager = () => {
     setSelectedTask(task);
   };
 
- // Corrected functions for StudentTaskManager.jsx
-// Replace your existing functions with these optimized versions:
+  const handleSubmitClick = (task) => {
+    console.log('🎯 Opening submission modal for task:', task);
+    setSelectedTask(task);
+    setShowSubmissionModal(true);
+    setSubmissionData({
+      comment: '',
+      collaborators: [''],
+      files: []
+    });
+    setErrors({});
+  };
 
-const handleSubmitClick = (task) => {
-  setSelectedTask(task);
-  setShowSubmissionModal(true);
-  setSubmissionData({
-    comment: '',
-    collaborators: [''],
-    files: []
-  });
-  setErrors({});
-};
-
-const handleCollaboratorChange = (index, value) => {
-  const newCollaborators = [...submissionData.collaborators];
-  newCollaborators[index] = value;
-  setSubmissionData(prev => ({
-    ...prev,
-    collaborators: newCollaborators
-  }));
-};
-
-const addCollaborator = () => {
-  setSubmissionData(prev => ({
-    ...prev,
-    collaborators: [...prev.collaborators, '']
-  }));
-};
-
-const removeCollaborator = (index) => {
-  const newCollaborators = submissionData.collaborators.filter((_, i) => i !== index);
-  setSubmissionData(prev => ({
-    ...prev,
-    collaborators: newCollaborators
-  }));
-};
-
-// ✅ FIXED: Unified file selection handler
-const handleFileSelect = (e) => {
-  const files = Array.from(e.target.files);
-  const maxSize = selectedTask?.maxFileSize || 10485760; // 10MB default
-  
-  console.log('🔍 Processing file selection...');
-  console.log('📎 Selected files:', files.length);
-  console.log('🔍 Task file upload allowed:', selectedTask?.allowFileUpload);
-  console.log('🔍 Allowed file types:', selectedTask?.allowedFileTypes);
-  
-  // Check if file uploads are allowed
-  if (!selectedTask?.allowFileUpload) {
-    setErrors({ files: 'File uploads are not allowed for this task' });
-    return;
-  }
-  
-  // Get allowed file types
-  let allowedTypes = selectedTask?.allowedFileTypes;
-  
-  // Handle different formats of allowedFileTypes
-  if (typeof allowedTypes === 'string') {
-    try {
-      allowedTypes = JSON.parse(allowedTypes);
-    } catch (e) {
-      allowedTypes = allowedTypes.split(',').map(type => type.trim());
-    }
-  }
-  
-  if (!Array.isArray(allowedTypes)) {
-    allowedTypes = [];
-  }
-  
-  console.log('🔍 Processed allowed types:', allowedTypes);
-  
-  const validFiles = [];
-  const fileErrors = [];
-
-  files.forEach(file => {
-    const fileExtension = file.name.split('.').pop()?.toLowerCase();
-    
-    console.log(`🔍 Validating file: ${file.name}`);
-    console.log(`   - Extension: .${fileExtension}`);
-    console.log(`   - Size: ${file.size} bytes`);
-    console.log(`   - Max size: ${maxSize} bytes`);
-    
-    // Validate file type (if restrictions exist)
-    if (allowedTypes.length > 0 && !allowedTypes.includes(fileExtension)) {
-      const errorMsg = `${file.name}: File type ".${fileExtension}" not allowed. Allowed: ${allowedTypes.join(', ')}`;
-      fileErrors.push(errorMsg);
-      console.log('❌ File type rejected:', errorMsg);
-    }
-    // Validate file size
-    else if (file.size > maxSize) {
-      const errorMsg = `${file.name}: File too large (max ${Math.round(maxSize / 1024 / 1024)}MB)`;
-      fileErrors.push(errorMsg);
-      console.log('❌ File size rejected:', errorMsg);
-    }
-    // File is valid
-    else {
-      validFiles.push(file);
-      console.log('✅ File accepted:', file.name);
-    }
-  });
-
-  // Update errors and files
-  if (fileErrors.length > 0) {
-    setErrors(prev => ({ ...prev, files: fileErrors.join('\n') }));
-  } else {
-    setErrors(prev => ({ ...prev, files: null }));
-  }
-
-  if (validFiles.length > 0) {
+  const handleCollaboratorChange = (index, value) => {
+    const newCollaborators = [...submissionData.collaborators];
+    newCollaborators[index] = value;
     setSubmissionData(prev => ({
       ...prev,
-      files: [...prev.files, ...validFiles]
+      collaborators: newCollaborators
     }));
-  }
+  };
 
-  // Clear the input
-  e.target.value = '';
-};
+  const addCollaborator = () => {
+    setSubmissionData(prev => ({
+      ...prev,
+      collaborators: [...prev.collaborators, '']
+    }));
+  };
 
-// ✅ File removal function
-const removeFile = (index) => {
-  console.log(`🗑️ Removing file at index ${index}`);
-  setSubmissionData(prev => ({
-    ...prev,
-    files: prev.files.filter((_, i) => i !== index)
-  }));
-};
+  const removeCollaborator = (index) => {
+    const newCollaborators = submissionData.collaborators.filter((_, i) => i !== index);
+    setSubmissionData(prev => ({
+      ...prev,
+      collaborators: newCollaborators
+    }));
+  };
 
-// ✅ Form validation
-const validateSubmission = () => {
-  const newErrors = {};
-
-  // Validate comment
-  if (!submissionData.comment.trim()) {
-    newErrors.comment = 'Please provide a comment about your submission';
-  }
-
-  // Validate files if file upload is required
-  if (selectedTask?.allowFileUpload && submissionData.files.length === 0) {
-    newErrors.files = 'Please attach at least one file';
-  }
-
-  // Validate collaborators format
-  const invalidEmails = submissionData.collaborators.filter(email => 
-    email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
-  );
-  
-  if (invalidEmails.length > 0) {
-    newErrors.collaborators = 'Please enter valid email addresses for collaborators';
-  }
-
-  setErrors(newErrors);
-  return Object.keys(newErrors).length === 0;
-};
-
-// ✅ MAIN SUBMISSION HANDLER - This is the primary function
-const handleSubmission = async () => {
-  console.log('🚀 Starting task submission...');
-  
-  // Validate form first
-  if (!validateSubmission()) {
-    console.log('❌ Validation failed');
-    return;
-  }
-
-  setSubmitting(true);
-  setErrors({});
-
-  try {
-    // Create FormData
-    const formData = new FormData();
-    formData.append('comment', submissionData.comment.trim());
+  // ✅ ENHANCED: File selection with better validation and logging
+  const handleFileSelect = (e) => {
+    const files = Array.from(e.target.files);
+    const maxSize = selectedTask?.maxFileSize || 10485760; // 10MB default
     
-    // Process collaborators
-    const validCollaborators = submissionData.collaborators.filter(email => 
-      email.trim() && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
-    );
+    console.log('🔍 Processing file selection...');
+    console.log('📎 Selected files:', files.length);
+    console.log('🔍 Task file upload allowed:', selectedTask?.allowFileUpload);
+    console.log('🔍 Allowed file types:', selectedTask?.allowedFileTypes);
     
-    if (validCollaborators.length > 0) {
-      formData.append('collaborators', JSON.stringify(validCollaborators));
+    // Check if file uploads are allowed
+    if (!selectedTask?.allowFileUpload) {
+      setErrors(prev => ({ ...prev, files: 'File uploads are not allowed for this task' }));
+      return;
     }
-
-    // Process files
-    console.log(`📎 Processing ${submissionData.files.length} files for submission...`);
     
-    let validFileCount = 0;
-    submissionData.files.forEach((file, index) => {
-      if (file && file.name && file.size > 0) {
-        formData.append('files', file);
-        validFileCount++;
-        console.log(`✅ Added file ${index + 1}: ${file.name} (${file.size} bytes)`);
-      } else {
-        console.error(`❌ Invalid file at index ${index}:`, file);
+    // Get allowed file types
+    let allowedTypes = selectedTask?.allowedFileTypes;
+    
+    // Handle different formats of allowedFileTypes
+    if (typeof allowedTypes === 'string') {
+      try {
+        allowedTypes = JSON.parse(allowedTypes);
+      } catch (e) {
+        allowedTypes = allowedTypes.split(',').map(type => type.trim());
+      }
+    }
+    
+    if (!Array.isArray(allowedTypes)) {
+      allowedTypes = [];
+    }
+    
+    console.log('🔍 Processed allowed types:', allowedTypes);
+    
+    const validFiles = [];
+    const fileErrors = [];
+
+    files.forEach(file => {
+      const fileExtension = file.name.split('.').pop()?.toLowerCase();
+      
+      console.log(`🔍 Validating file: ${file.name}`);
+      console.log(`   - Extension: .${fileExtension}`);
+      console.log(`   - Size: ${file.size} bytes`);
+      console.log(`   - Max size: ${maxSize} bytes`);
+      
+      // Validate file type (if restrictions exist)
+      if (allowedTypes.length > 0 && !allowedTypes.includes(fileExtension)) {
+        const errorMsg = `${file.name}: File type ".${fileExtension}" not allowed. Allowed: ${allowedTypes.join(', ')}`;
+        fileErrors.push(errorMsg);
+        console.log('❌ File type rejected:', errorMsg);
+      }
+      // Validate file size
+      else if (file.size > maxSize) {
+        const errorMsg = `${file.name}: File too large (max ${Math.round(maxSize / 1024 / 1024)}MB)`;
+        fileErrors.push(errorMsg);
+        console.log('❌ File size rejected:', errorMsg);
+      }
+      // File is valid
+      else {
+        validFiles.push(file);
+        console.log('✅ File accepted:', file.name);
       }
     });
 
-    console.log(`📤 Submitting to: ${API_BASE}/tasks/${selectedTask._id}/submit`);
-    console.log(`📋 Submission details:`);
-    console.log(`   - Comment: ${submissionData.comment.trim()}`);
-    console.log(`   - Collaborators: ${validCollaborators.length}`);
-    console.log(`   - Files: ${validFileCount}`);
-
-    // Submit to server
-    const response = await fetch(`${API_BASE}/tasks/${selectedTask._id}/submit`, {
-      method: 'POST',
-      credentials: 'include',
-      body: formData
-    });
-
-    console.log(`📡 Response status: ${response.status}`);
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`❌ HTTP Error ${response.status}:`, errorText);
-      throw new Error(`Server error (${response.status}): ${errorText}`);
-    }
-
-    const data = await response.json();
-    console.log('📦 Server response:', data);
-
-    if (data.success) {
-      console.log('🎉 Task submitted successfully!');
-      
-      // Update local task state
-      setTasks(prev => prev.map(task => 
-        task._id === selectedTask._id 
-          ? { 
-              ...task, 
-              submissionStatus: 'submitted',
-              submissionDate: new Date().toISOString()
-            }
-          : task
-      ));
-      
-      // Close modal and reset form
-      setShowSubmissionModal(false);
-      setSelectedTask(null);
-      setSubmissionData({ comment: '', collaborators: [''], files: [] });
-      setErrors({});
-      
-      // Show success message
-      alert('Task submitted successfully!');
-      
+    // Update errors and files
+    if (fileErrors.length > 0) {
+      setErrors(prev => ({ ...prev, files: fileErrors.join('\n') }));
     } else {
-      console.error('❌ Submission failed:', data.message);
-      setErrors({ submit: data.message || 'Failed to submit task' });
+      setErrors(prev => ({ ...prev, files: null }));
     }
 
-  } catch (error) {
-    console.error('❌ Submission error:', error);
-    setErrors({ 
-      submit: error.message || 'Network error. Please check your connection and try again.' 
-    });
-  } finally {
-    setSubmitting(false);
-  }
-};
+    if (validFiles.length > 0) {
+      setSubmissionData(prev => ({
+        ...prev,
+        files: [...prev.files, ...validFiles]
+      }));
+    }
 
-// ✅ Alternative handler names for compatibility
-const handleFileUpload = handleFileSelect; // Alias for consistency
-const handleSubmit = handleSubmission;     // Alias for form submission
+    // Clear the input
+    e.target.value = '';
+  };
+
+  const removeFile = (index) => {
+    console.log(`🗑️ Removing file at index ${index}`);
+    setSubmissionData(prev => ({
+      ...prev,
+      files: prev.files.filter((_, i) => i !== index)
+    }));
+  };
+
+  const validateSubmission = () => {
+    const newErrors = {};
+
+    // Validate comment
+    if (!submissionData.comment.trim()) {
+      newErrors.comment = 'Please provide a comment about your submission';
+    }
+
+    // Validate files if file upload is required
+    if (selectedTask?.allowFileUpload && submissionData.files.length === 0) {
+      newErrors.files = 'Please attach at least one file';
+    }
+
+    // Validate collaborators format
+    const invalidEmails = submissionData.collaborators.filter(email => 
+      email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
+    );
+    
+    if (invalidEmails.length > 0) {
+      newErrors.collaborators = 'Please enter valid email addresses for collaborators';
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  // ✅ COMPLETELY FIXED: Submission handler with proper debugging
+  const handleSubmission = async (e) => {
+    e.preventDefault();
+    
+    console.log('🚀 === SUBMISSION DEBUG START ===');
+    console.log('📋 Selected task:', selectedTask);
+    console.log('🔗 API Base:', API_BASE);
+    console.log('🎯 Submit URL:', `${API_BASE}/tasks/${selectedTask?._id}/submit`);
+    
+    if (!selectedTask || !selectedTask._id) {
+      console.error('❌ No task selected or invalid task ID');
+      setErrors(prev => ({ ...prev, submit: 'No valid task selected. Please refresh and try again.' }));
+      return;
+    }
+
+    // Validate form first
+    if (!validateSubmission()) {
+      console.log('❌ Form validation failed');
+      return;
+    }
+
+    setSubmitting(true);
+    setErrors({});
+
+    try {
+      // ✅ CRITICAL: Use FormData, not JSON for file uploads
+      const formData = new FormData();
+      
+      if (submissionData.comment.trim()) {
+        formData.append('comment', submissionData.comment.trim());
+        console.log('✅ Added comment to form data');
+      }
+      
+      if (submissionData.files && submissionData.files.length > 0) {
+        submissionData.files.forEach((file, index) => {
+          formData.append('files', file);
+          console.log(`✅ Added file ${index + 1}: ${file.name} (${file.size} bytes)`);
+        });
+      }
+      
+      const validCollaborators = submissionData.collaborators.filter(email => email.trim());
+      if (validCollaborators.length > 0) {
+        formData.append('collaborators', JSON.stringify(validCollaborators));
+        console.log('✅ Added collaborators:', validCollaborators);
+      }
+
+      console.log('📤 Making submission request...');
+      console.log('📦 FormData prepared with:');
+      console.log(`   - Comment: ${submissionData.comment.trim()}`);
+      console.log(`   - Files: ${submissionData.files.length}`);
+      console.log(`   - Collaborators: ${validCollaborators.length}`);
+      
+      // List files separately
+      if (submissionData.files.length > 0) {
+        submissionData.files.forEach((file, index) => {
+          console.log(`   File ${index + 1}: ${file.name} (${file.size} bytes)`);
+        });
+      }
+
+      // ✅ CRITICAL: Don't set Content-Type header for FormData - let browser handle it
+      const response = await fetch(`${API_BASE}/tasks/${selectedTask._id}/submit`, {
+        method: 'POST',
+        body: formData, // FormData, not JSON
+        credentials: 'include'
+        // Don't set Content-Type header - browser will set multipart/form-data with boundary
+      });
+
+      console.log(`📡 Response received - Status: ${response.status}`);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`❌ HTTP Error ${response.status}:`, errorText);
+        
+        let errorData;
+        try {
+          errorData = JSON.parse(errorText);
+        } catch {
+          errorData = { message: errorText };
+        }
+        
+        // Specific error handling based on status
+        if (response.status === 401) {
+          throw new Error('Authentication failed. Please log in again.');
+        } else if (response.status === 403) {
+          throw new Error(errorData.message || 'Access denied. You may not be a member of this task\'s team.');
+        } else if (response.status === 404) {
+          console.error('❌ Task not found details:', {
+            taskId: selectedTask._id,
+            taskTitle: selectedTask.title,
+            url: `${API_BASE}/tasks/${selectedTask._id}/submit`,
+            errorMessage: errorData.message
+          });
+          throw new Error('Task not found. This task may have been deleted or you may not have access to it. Please refresh the page and try again.');
+        } else {
+          throw new Error(errorData.message || `Server error (${response.status})`);
+        }
+      }
+
+      const data = await response.json();
+      console.log('✅ Submission successful:', data);
+
+      if (data.success) {
+        console.log('🎉 Task submitted successfully!');
+        
+        // Close modal and reset form
+        setShowSubmissionModal(false);
+        setSubmissionData({
+          comment: '',
+          collaborators: [''],
+          files: []
+        });
+        
+        // Refresh tasks to show updated status
+        console.log('🔄 Refreshing tasks after successful submission...');
+        await loadTasks();
+        
+        // Show success message
+        alert('Task submitted successfully!');
+      } else {
+        throw new Error(data.message || 'Submission failed');
+      }
+
+    } catch (error) {
+      console.error('❌ Submission error details:', {
+        error: error.message,
+        taskId: selectedTask?._id,
+        taskTitle: selectedTask?.title,
+        url: `${API_BASE}/tasks/${selectedTask?._id}/submit`
+      });
+      
+      if (error.name === 'TypeError' && error.message.includes('fetch')) {
+        setErrors(prev => ({ ...prev, submit: 'Network error. Please check your connection and ensure the server is running.' }));
+      } else {
+        setErrors(prev => ({ ...prev, submit: error.message || 'An unexpected error occurred during submission' }));
+      }
+    } finally {
+      setSubmitting(false);
+      console.log('🚀 === SUBMISSION DEBUG END ===');
+    }
+  };
+
+  // ✅ Debug function to test task existence
+  const debugTask = async () => {
+    if (!selectedTask) return;
+    
+    console.log('🔍 === TASK DEBUG START ===');
+    console.log('📋 Task details:', selectedTask);
+    
+    try {
+      // Test submit endpoint with OPTIONS request
+      const optionsResponse = await fetch(`${API_BASE}/tasks/${selectedTask._id}/submit`, {
+        method: 'OPTIONS',
+        credentials: 'include'
+      });
+      console.log('🔍 OPTIONS response:', optionsResponse.status);
+      
+      // Test with empty POST to see detailed error
+      const testResponse = await fetch(`${API_BASE}/tasks/${selectedTask._id}/submit`, {
+        method: 'POST',
+        credentials: 'include',
+        body: new FormData()
+      });
+      
+      const testResult = await testResponse.text();
+      console.log('🔍 Test submission response:', testResponse.status, testResult);
+      
+    } catch (error) {
+      console.log('❌ Debug test failed:', error);
+    }
+    
+    console.log('🔍 === TASK DEBUG END ===');
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="w-8 h-8 animate-spin text-purple-600" />
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 animate-spin text-purple-600 mx-auto mb-4" />
+          <p className="text-gray-600">Loading your tasks...</p>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="max-w-6xl mx-auto p-6">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">My Tasks</h1>
-        <p className="text-gray-600">View and submit your assigned tasks</p>
+      {/* Header with refresh button */}
+      <div className="mb-8 flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">My Tasks</h1>
+          <p className="text-gray-600">View and submit your assigned tasks</p>
+        </div>
+        <button
+          onClick={handleRefresh}
+          disabled={refreshing}
+          className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+        >
+          <RefreshCw className={`w-4 h-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+          {refreshing ? 'Refreshing...' : 'Refresh Tasks'}
+        </button>
+      </div>
+
+      {/* Error display */}
+      {errors.general && (
+        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+          <div className="flex items-center text-red-800">
+            <AlertCircle className="w-5 h-5 mr-2" />
+            <span>{errors.general}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Debug info */}
+      <div className="mb-4 p-3 bg-gray-50 rounded-lg text-sm text-gray-600">
+        <p><strong>API Base:</strong> {API_BASE}</p>
+        <p><strong>Tasks loaded:</strong> {tasks.length}</p>
+        <p><strong>Current time:</strong> {new Date().toLocaleString()}</p>
       </div>
 
       {tasks.length === 0 ? (
         <div className="text-center py-12">
           <FileText className="w-16 h-16 text-gray-400 mx-auto mb-4" />
           <h3 className="text-xl font-semibold text-gray-600 mb-2">No Tasks Available</h3>
-          <p className="text-gray-500">You don't have any tasks assigned yet. Check back later or contact your instructor.</p>
+          <p className="text-gray-500 mb-4">
+            {errors.general 
+              ? 'There was an error loading your tasks.' 
+              : 'You don\'t have any tasks assigned yet. Check back later or contact your instructor.'
+            }
+          </p>
+          <button
+            onClick={handleRefresh}
+            className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+          >
+            Try Again
+          </button>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -410,15 +564,17 @@ const handleSubmit = handleSubmission;     // Alias for form submission
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex-1">
                     <h3 className="text-lg font-semibold text-gray-900 mb-1">{task.title}</h3>
-                    <p className="text-sm text-gray-600">Server: {task.server?.title}</p>
-                    <p className="text-sm text-gray-600">Team: {task.team?.name}</p>
+                    <p className="text-sm text-gray-600">Server: {task.server?.title || 'Unknown'}</p>
+                    <p className="text-sm text-gray-600">Team: {task.team?.name || 'Unknown'}</p>
+                    {/* Debug info */}
+                    <p className="text-xs text-gray-400 mt-1">ID: {task._id}</p>
                   </div>
                   <div className="flex flex-col items-end space-y-2">
                     <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(task.submissionStatus)}`}>
                       {task.submissionStatus || 'pending'}
                     </span>
                     <span className={`px-2 py-1 rounded-full text-xs font-medium ${getPriorityColor(task.priority)}`}>
-                      {task.priority}
+                      {task.priority || 'medium'}
                     </span>
                   </div>
                 </div>
@@ -456,6 +612,7 @@ const handleSubmit = handleSubmission;     // Alias for form submission
                     onClick={() => handleTaskClick(task)}
                     className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm"
                   >
+                    <Eye className="w-4 h-4 inline mr-1" />
                     View Details
                   </button>
                   {canSubmit(task) && (
@@ -472,12 +629,12 @@ const handleSubmit = handleSubmission;     // Alias for form submission
                 {task.submissionStatus === 'submitted' && (
                   <div className="mt-3 p-3 bg-blue-50 rounded-lg">
                     <p className="text-sm text-blue-800">
-                      Submitted on {new Date(task.submissionDate).toLocaleDateString()}
+                      Submitted on {task.submissionDate ? new Date(task.submissionDate).toLocaleDateString() : 'Unknown date'}
                     </p>
                   </div>
                 )}
 
-                {task.submissionStatus === 'graded' && (
+                {task.submissionStatus === 'graded' && task.grade !== undefined && (
                   <div className="mt-3 p-3 bg-green-50 rounded-lg">
                     <div className="flex items-center justify-between">
                       <p className="text-sm text-green-800">
@@ -502,16 +659,32 @@ const handleSubmit = handleSubmission;     // Alias for form submission
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <div className="sticky top-0 bg-white border-b px-6 py-4 flex items-center justify-between">
               <h2 className="text-xl font-bold text-gray-900">{selectedTask.title}</h2>
-              <button
-                onClick={() => setSelectedTask(null)}
-                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-              >
-                <X className="w-5 h-5 text-gray-600" />
-              </button>
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={debugTask}
+                  className="px-3 py-1 bg-yellow-500 text-white rounded text-sm hover:bg-yellow-600"
+                >
+                  Debug
+                </button>
+                <button
+                  onClick={() => setSelectedTask(null)}
+                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5 text-gray-600" />
+                </button>
+              </div>
             </div>
             
             <div className="p-6">
               <div className="space-y-4">
+                {/* Debug info */}
+                <div className="p-3 bg-gray-50 rounded-lg text-sm">
+                  <p><strong>Task ID:</strong> {selectedTask._id}</p>
+                  <p><strong>Server:</strong> {selectedTask.server?.title}</p>
+                  <p><strong>Team:</strong> {selectedTask.team?.name}</p>
+                  <p><strong>Status:</strong> {selectedTask.submissionStatus || 'pending'}</p>
+                </div>
+
                 <div>
                   <h3 className="font-semibold text-gray-900 mb-2">Description</h3>
                   <p className="text-gray-700">{selectedTask.description}</p>
@@ -587,7 +760,17 @@ const handleSubmit = handleSubmission;     // Alias for form submission
             </div>
             
             <div className="p-6">
-              <div className="space-y-6">
+              {/* Debug info in submission modal */}
+              <div className="mb-4 p-3 bg-blue-50 rounded-lg text-sm">
+                <p><strong>Submitting to:</strong> {API_BASE}/tasks/{selectedTask._id}/submit</p>
+                <p><strong>Task:</strong> {selectedTask.title}</p>
+                <p><strong>File uploads allowed:</strong> {selectedTask.allowFileUpload ? 'Yes' : 'No'}</p>
+                {selectedTask.allowFileUpload && (
+                  <p><strong>Allowed types:</strong> {selectedTask.allowedFileTypes?.join(', ') || 'All types'}</p>
+                )}
+              </div>
+
+              <form onSubmit={handleSubmission} className="space-y-6">
                 {/* Comment */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -653,6 +836,7 @@ const handleSubmit = handleSubmission;     // Alias for form submission
                               </div>
                             </div>
                             <button
+                              type="button"
                               onClick={() => removeFile(index)}
                               className="p-1 text-red-600 hover:bg-red-100 rounded transition-colors"
                             >
@@ -664,7 +848,7 @@ const handleSubmit = handleSubmission;     // Alias for form submission
                     )}
 
                     {errors.files && (
-                      <p className="text-red-600 text-sm mt-2">{errors.files}</p>
+                      <p className="text-red-600 text-sm mt-2 whitespace-pre-line">{errors.files}</p>
                     )}
                   </div>
                 )}
@@ -689,6 +873,7 @@ const handleSubmit = handleSubmission;     // Alias for form submission
                       />
                       {submissionData.collaborators.length > 1 && (
                         <button
+                          type="button"
                           onClick={() => removeCollaborator(index)}
                           className="p-2 text-red-600 hover:bg-red-100 rounded transition-colors"
                         >
@@ -699,12 +884,17 @@ const handleSubmit = handleSubmission;     // Alias for form submission
                   ))}
                   
                   <button
+                    type="button"
                     onClick={addCollaborator}
                     className="flex items-center text-purple-600 hover:text-purple-700 transition-colors text-sm"
                   >
                     <Plus className="w-4 h-4 mr-1" />
                     Add Collaborator
                   </button>
+
+                  {errors.collaborators && (
+                    <p className="text-red-600 text-sm mt-2">{errors.collaborators}</p>
+                  )}
                 </div>
 
                 {/* Submit Error */}
@@ -717,9 +907,21 @@ const handleSubmit = handleSubmission;     // Alias for form submission
                   </div>
                 )}
 
+                {/* Debug button */}
+                <div className="flex items-center justify-center">
+                  <button
+                    type="button"
+                    onClick={debugTask}
+                    className="px-3 py-1 bg-yellow-500 text-white rounded text-sm hover:bg-yellow-600"
+                  >
+                    Debug Task Connection
+                  </button>
+                </div>
+
                 {/* Actions */}
                 <div className="flex space-x-3 pt-4 border-t">
                   <button
+                    type="button"
                     onClick={() => setShowSubmissionModal(false)}
                     disabled={submitting}
                     className="flex-1 px-4 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
@@ -727,7 +929,7 @@ const handleSubmit = handleSubmission;     // Alias for form submission
                     Cancel
                   </button>
                   <button
-                    onClick={handleSubmission}
+                    type="submit"
                     disabled={submitting}
                     className="flex-1 px-4 py-3 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-lg hover:from-purple-600 hover:to-indigo-700 transition-all disabled:opacity-50 flex items-center justify-center"
                   >
@@ -741,7 +943,7 @@ const handleSubmit = handleSubmission;     // Alias for form submission
                     )}
                   </button>
                 </div>
-              </div>
+              </form>
             </div>
           </div>
         </div>
