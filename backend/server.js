@@ -41,33 +41,37 @@ const app = express();
 const server = http.createServer(app);
 const PORT = process.env.PORT || 5000;
 
+// ✅ FIXED: Define uploadsDir globally so it can be used throughout
+const uploadsDir = path.join(__dirname, 'uploads');
+
 // ✅ FIXED: Create all necessary upload directories
-const createUploadDirectories = () => {
-  const baseUploadsDir = path.join(__dirname, 'uploads');
-  const directories = [
-    baseUploadsDir,
-    path.join(baseUploadsDir, 'submissions'),
-    path.join(baseUploadsDir, 'faculty'),
-    path.join(baseUploadsDir, 'student'),
-    path.join(baseUploadsDir, 'profiles'),
-    path.join(baseUploadsDir, 'temp')
-  ];
+const createUploadsDirectory = () => {
+  const submissionsDir = path.join(uploadsDir, 'submissions');
+  const facultyDir = path.join(uploadsDir, 'faculty');
+  const studentDir = path.join(uploadsDir, 'student');
+  const profilesDir = path.join(uploadsDir, 'profiles');
 
-  directories.forEach(dir => {
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-      console.log(`📁 Created directory: ${dir}`);
-    } else {
-      console.log(`📁 Directory exists: ${dir}`);
+  try {
+    if (!fs.existsSync(uploadsDir)) {
+      fs.mkdirSync(uploadsDir, { recursive: true });
+      console.log('📁 Created uploads directory');
     }
-  });
-
-  console.log('✅ All upload directories verified/created');
-  return baseUploadsDir;
+    
+    [submissionsDir, facultyDir, studentDir, profilesDir].forEach(dir => {
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+        console.log(`📁 Created ${path.basename(dir)} directory`);
+      }
+    });
+    
+    console.log(`✅ Upload directories initialized at: ${uploadsDir}`);
+  } catch (error) {
+    console.error('❌ Error creating directories:', error);
+  }
 };
 
-// Call this function before setting up routes
-const uploadsDir = createUploadDirectories();
+// Call this when server starts
+createUploadsDirectory();
 
 // Socket.io setup (if available)
 let io;
@@ -273,7 +277,7 @@ app.use(express.urlencoded({
 app.use(cookieParser());
 
 // ✅ FIXED: Serve static files with security headers and proper paths
-app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
+app.use('/uploads', express.static(uploadsDir, {
   setHeaders: (res, filePath) => {
     // Prevent execution of uploaded files
     res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -295,10 +299,10 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
 }));
 
 // ✅ ADDITIONAL: Serve specific upload subdirectories
-app.use('/uploads/submissions', express.static(path.join(__dirname, 'uploads/submissions')));
-app.use('/uploads/profiles', express.static(path.join(__dirname, 'uploads/profiles')));
-app.use('/uploads/faculty', express.static(path.join(__dirname, 'uploads/faculty')));
-app.use('/uploads/student', express.static(path.join(__dirname, 'uploads/student')));
+app.use('/uploads/submissions', express.static(path.join(uploadsDir, 'submissions')));
+app.use('/uploads/profiles', express.static(path.join(uploadsDir, 'profiles')));
+app.use('/uploads/faculty', express.static(path.join(uploadsDir, 'faculty')));
+app.use('/uploads/student', express.static(path.join(uploadsDir, 'student')));
 
 // Request logging (only in development)
 if (process.env.NODE_ENV !== 'production') {
@@ -413,6 +417,8 @@ app.use("/api/teamRoutes", teamRoutes);
 app.use("/api/tasks", taskRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use("/api/analytics", analyticsRoutes);
+
+// Security headers middleware
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
@@ -420,8 +426,6 @@ app.use((req, res, next) => {
   next();
 });
 
-// File type validation (already included in fileRoutes.js):
-const dangerousExts = ['.exe', '.bat', '.cmd', '.com', '.pif', '.scr', '.vbs', '.js'];
 // ✅ NEW: Search endpoint for dashboard
 app.get("/api/search", verifyToken, async (req, res) => {
   try {
@@ -587,6 +591,8 @@ app.get("/api/search", verifyToken, async (req, res) => {
 if (fileRoutes) {
   app.use("/api/files", fileRoutes);
   console.log("📎 File upload routes enabled");
+} else {
+  console.log("❌ File routes not available");
 }
 
 if (calendarRoutes) {
@@ -659,6 +665,24 @@ app.get("/api/download/:type/:filename", (req, res) => {
   res.sendFile(filePath);
 });
 
+// ✅ ADDITIONAL: File serving route for task submissions
+app.get("/api/files/submissions/:filename", (req, res) => {
+  const { filename } = req.params;
+  const filePath = path.join(uploadsDir, 'submissions', filename);
+  
+  console.log(`📁 File request: ${filename} at ${filePath}`);
+  
+  if (fs.existsSync(filePath)) {
+    res.sendFile(path.resolve(filePath));
+  } else {
+    console.error(`❌ File not found: ${filePath}`);
+    res.status(404).json({ 
+      message: 'File not found',
+      success: false 
+    });
+  }
+});
+
 // Enhanced 404 handler for API routes
 app.use('/api/*', (req, res) => {
   if (process.env.NODE_ENV !== 'production') {
@@ -729,7 +753,8 @@ app.use('/api/*', (req, res) => {
           'POST /api/files/upload',
           'GET /api/files/:id',
           'DELETE /api/files/:id',
-          'GET /api/files/task/:taskId'
+          'GET /api/files/task/:taskId',
+          'GET /api/files/submissions/:filename'
         ] : 'Not installed',
         calendar: calendarRoutes ? [
           'GET /api/calendar/events',

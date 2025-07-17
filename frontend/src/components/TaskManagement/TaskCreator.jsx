@@ -42,7 +42,7 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
   // UI state
   const [teams, setTeams] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [loadingTeams, setLoadingTeams] = useState(true);
+  const [loadingTeams, setLoadingTeams] = useState(false);
   const [errors, setErrors] = useState({});
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [submitAttempted, setSubmitAttempted] = useState(false);
@@ -71,49 +71,130 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
   ];
 
   // ✅ STABLE: Fetch teams only once on mount
-  const fetchTeams = useCallback(async () => {
-    if (!serverId || !mountedRef.current) return;
+// Replace your existing fetchTeams function with this improved version:
+
+ // Replace your existing fetchTeams function with this fixed version:
+
+// Replace your useEffect sections in TaskCreator.jsx with these more stable versions:
+
+// ✅ FIXED: Prevent multiple API calls during server switching
+useEffect(() => {
+  console.log('🚀 TaskCreator mounted/server changed:', { serverId, serverTitle });
+  
+  // Set mounted ref to true
+  mountedRef.current = true;
+  
+  // Only fetch if we have a valid serverId and not already loading
+  if (serverId && !loadingTeams) {
+    fetchTeams();
+  }
+  
+  // Cleanup function
+  return () => {
+    console.log('🧹 TaskCreator cleanup');
+    mountedRef.current = false;
+  };
+}, [serverId]); // ✅ Only depend on serverId, not fetchTeams
+
+// ✅ FIXED: Debounced fetchTeams to prevent rapid calls
+const fetchTeams = useCallback(
+  debounce(async () => {
+    if (!serverId || !mountedRef.current || loadingTeams) {
+      console.log('⏭️ Skipping fetchTeams:', { serverId, mounted: mountedRef.current, loadingTeams });
+      return;
+    }
+    
+    console.log(`🔍 Starting fetchTeams for server: ${serverId}`);
+    setLoadingTeams(true);
+    setErrors(prev => ({ ...prev, teams: null }));
     
     try {
-      setLoadingTeams(true);
       const response = await fetch(`${API_BASE}/tasks/server/${serverId}/teams`, {
-        credentials: 'include'
+        credentials: 'include',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        }
       });
       
-      const data = await response.json();
-      if (data.success && mountedRef.current) {
-        setTeams(data.teams || []);
+      console.log(`📡 Response status: ${response.status}`);
+      
+      if (!mountedRef.current) {
+        console.log('🚫 Component unmounted during fetch, aborting');
+        return;
+      }
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log(`📦 Teams data received:`, data);
+        
+        if (data.success) {
+          const teamsList = data.teams || [];
+          setTeams(teamsList);
+          
+          if (teamsList.length === 0) {
+            setErrors(prev => ({ 
+              ...prev, 
+              teams: data.message || 'No teams found in this server. Students need to create teams first before you can assign tasks.'
+            }));
+          }
+          
+          console.log(`✅ Successfully loaded ${teamsList.length} teams`);
+        } else {
+          console.error('❌ API returned unsuccessful response:', data);
+          setErrors(prev => ({ 
+            ...prev, 
+            teams: data.message || 'Failed to load teams' 
+          }));
+        }
+      } else {
+        const errorText = await response.text();
+        console.error(`❌ API error ${response.status}:`, errorText);
+        setErrors(prev => ({ 
+          ...prev, 
+          teams: `Server error (${response.status}). Please try again.`
+        }));
       }
     } catch (error) {
-      console.error('Failed to fetch teams:', error);
+      console.error('❌ Network error fetching teams:', error);
       if (mountedRef.current) {
-        setErrors(prev => ({ ...prev, teams: 'Failed to load teams' }));
+        setErrors(prev => ({ 
+          ...prev, 
+          teams: 'Network error. Please check your connection and try again.' 
+        }));
       }
     } finally {
       if (mountedRef.current) {
+        console.log('🏁 Setting loadingTeams to false');
         setLoadingTeams(false);
       }
     }
-  }, [serverId, API_BASE]);
+  }, 300), // ✅ Debounce by 300ms to prevent rapid calls
+  [serverId, API_BASE, loadingTeams]
+);
 
-  useEffect(() => {
-    fetchTeams();
-    
-    // Cleanup function
-    return () => {
-      mountedRef.current = false;
+// ✅ Helper function: Add debounce utility at the top of your file if not already present
+function debounce(func, wait) {
+  let timeout;
+  return function executedFunction(...args) {
+    const later = () => {
+      clearTimeout(timeout);
+      func(...args);
     };
-  }, [fetchTeams]);
+    clearTimeout(timeout);
+    timeout = setTimeout(later, wait);
+  };
+}
 
   // ✅ STABLE: Memoized validation function
   const validateForm = useCallback(() => {
     const newErrors = {};
 
-    if (!formData.title?.trim()) {
+    if (!formData.title.trim()) {
       newErrors.title = 'Task title is required';
     }
 
-    if (!formData.description?.trim()) {
+    if (!formData.description.trim()) {
       newErrors.description = 'Task description is required';
     }
 
@@ -127,24 +208,25 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
       }
     }
 
-    if (!formData.assignToAll && (!Array.isArray(formData.teamIds) || formData.teamIds.length === 0)) {
+    if (!formData.maxPoints || formData.maxPoints < 1) {
+      newErrors.maxPoints = 'Maximum points must be at least 1';
+    }
+
+    // Team assignment validation
+    if (!formData.assignToAll && formData.teamIds.length === 0) {
       newErrors.teams = 'Please select at least one team or choose "Assign to All Teams"';
     }
 
-    if (!formData.maxPoints || formData.maxPoints < 1 || formData.maxPoints > 1000) {
-      newErrors.maxPoints = 'Points must be between 1 and 1000';
+    // File upload validation
+    if (formData.allowFileUpload && formData.allowedFileTypes.length === 0) {
+      newErrors.allowedFileTypes = 'Please select at least one allowed file type';
     }
 
-    if (!formData.maxAttempts || formData.maxAttempts < 1 || formData.maxAttempts > 10) {
+    if (formData.maxAttempts < 1 || formData.maxAttempts > 10) {
       newErrors.maxAttempts = 'Maximum attempts must be between 1 and 10';
     }
 
-    if (formData.allowFileUpload && (!Array.isArray(formData.allowedFileTypes) || formData.allowedFileTypes.length === 0)) {
-      newErrors.allowedFileTypes = 'Please select at least one allowed file type when file upload is enabled';
-    }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+    return newErrors;
   }, [formData]);
 
   // ✅ STABLE: Form handlers that don't cause re-renders
@@ -200,87 +282,91 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
     }));
   }, []);
 
-  // ✅ CRITICAL FIX: Prevent form from resetting during submission
   const handleSubmit = useCallback(async (e) => {
     e.preventDefault();
-    e.stopPropagation();
     
-    // Prevent multiple submissions
-    if (loading || submitAttempted) {
-      console.log('🚫 Submission blocked - already in progress');
-      return;
-    }
+    if (loading || submitAttempted) return;
     
     setSubmitAttempted(true);
-    
-    console.log('🔍 Form submission started');
-    console.log('🔍 allowedFileTypes:', formData.allowedFileTypes);
-    console.log('🔍 teamIds:', formData.teamIds);
-    
-    if (!validateForm()) {
+    setLoading(true);
+    setErrors({});
+
+    // Validate form
+    const formErrors = validateForm();
+    if (Object.keys(formErrors).length > 0) {
+      setErrors(formErrors);
+      setLoading(false);
       setSubmitAttempted(false);
       return;
     }
 
-    setLoading(true);
+  try {
+    console.log('🚀 Submitting task creation form:', formData);
+
+    const requestBody = {
+      title: formData.title.trim(),
+      description: formData.description.trim(),
+      serverId,
+      dueDate: formData.dueDate,
+      maxPoints: parseInt(formData.maxPoints),
+      assignmentType: formData.assignmentType,
+      assignToAll: formData.assignToAll,
+      teamIds: formData.assignToAll ? [] : (Array.isArray(formData.teamIds) ? formData.teamIds : []),
+      allowLateSubmissions: formData.allowLateSubmissions,
+      maxAttempts: parseInt(formData.maxAttempts),
+      allowFileUpload: formData.allowFileUpload,
+      allowedFileTypes: Array.isArray(formData.allowedFileTypes) ? formData.allowedFileTypes : [],
+      maxFileSize: parseInt(formData.maxFileSize),
+      priority: formData.priority
+    };
+
+    console.log('📤 Request payload:', JSON.stringify(requestBody, null, 2));
+
+    const response = await fetch(`${API_BASE}/tasks/create`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      credentials: 'include',
+      body: JSON.stringify(requestBody)
+    });
+
+    console.log('📡 Task creation response status:', response.status);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ Task creation failed:', errorText);
+      throw new Error(`Server error (${response.status}): ${errorText}`);
+    }
+
+    const data = await response.json();
+    console.log('✅ Task creation response:', data);
     
-    try {
-      const requestBody = {
-        title: formData.title.trim(),
-        description: formData.description.trim(),
-        serverId: serverId,
-        dueDate: formData.dueDate,
-        maxPoints: parseInt(formData.maxPoints),
-        assignmentType: 'team',
-        assignToAll: formData.assignToAll,
-        teamIds: formData.assignToAll ? [] : (Array.isArray(formData.teamIds) ? formData.teamIds : []),
-        allowLateSubmissions: formData.allowLateSubmissions,
-        maxAttempts: parseInt(formData.maxAttempts),
-        allowFileUpload: formData.allowFileUpload,
-        allowedFileTypes: Array.isArray(formData.allowedFileTypes) ? formData.allowedFileTypes : [],
-        maxFileSize: parseInt(formData.maxFileSize),
-        priority: formData.priority
-      };
-
-      console.log('🚀 Sending request:', requestBody);
-
-      const response = await fetch(`${API_BASE}/tasks/create`, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json'
-        },
-        credentials: 'include',
-        body: JSON.stringify(requestBody)
-      });
-
-      const data = await response.json();
-      
-      if (data.success) {
-        console.log('✅ Task created successfully');
-        // Only call callbacks if component is still mounted
-        if (mountedRef.current) {
-          onTaskCreated?.(data);
-          onClose?.();
-        }
-      } else {
-        console.error('❌ Task creation failed:', data.message);
-        if (mountedRef.current) {
-          setErrors({ submit: data.message || 'Failed to create task' });
-        }
-      }
-    } catch (error) {
-      console.error('❌ Network error:', error);
+    if (data.success) {
+      console.log('🎉 Task created successfully');
       if (mountedRef.current) {
-        setErrors({ submit: 'Network error. Please try again.' });
+        onTaskCreated?.(data);
+        onClose?.();
       }
-    } finally {
+    } else {
+      console.error('❌ Task creation failed:', data.message);
       if (mountedRef.current) {
-        setLoading(false);
-        setSubmitAttempted(false);
+        setErrors({ submit: data.message || 'Failed to create task' });
       }
     }
-  }, [formData, loading, submitAttempted, validateForm, serverId, API_BASE, onTaskCreated, onClose]);
-
+  } catch (error) {
+    console.error('❌ Network error:', error);
+    if (mountedRef.current) {
+      setErrors({ submit: error.message || 'Network error. Please try again.' });
+    }
+  } finally {
+    if (mountedRef.current) {
+      setLoading(false);
+      setSubmitAttempted(false);
+    }
+  }
+}, [formData, loading, submitAttempted, validateForm, serverId, API_BASE, onTaskCreated, onClose]);
   // ✅ STABLE: Safe close handler
   const handleClose = useCallback(() => {
     if (!loading) {

@@ -44,41 +44,65 @@ router.use(ensureUploadsDirectory);
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     const uploadsDir = path.join(__dirname, '../uploads/submissions');
+    
+    // Ensure directory exists
+    if (!fs.existsSync(uploadsDir)) {
+      fs.mkdirSync(uploadsDir, { recursive: true });
+      console.log('📁 Created submissions directory');
+    }
+    
+    console.log(`📂 Upload destination: ${uploadsDir}`);
     cb(null, uploadsDir);
   },
   filename: (req, file, cb) => {
     try {
-      const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+      // Simpler filename generation to avoid truncation
+      const timestamp = Date.now();
+      const randomSuffix = Math.round(Math.random() * 1000);
       const ext = path.extname(file.originalname).toLowerCase();
       
-      // Robust filename sanitization
-      let baseName = path.basename(file.originalname, path.extname(file.originalname));
+      // Simplified base name handling
+      let baseName = path.basename(file.originalname, ext)
+        .replace(/[^a-zA-Z0-9]/g, '_') // Replace all special chars with underscore
+        .substring(0, 20); // Shorter limit to prevent path issues
       
-      // Remove or replace problematic characters
-      baseName = baseName
-        .normalize('NFD') // Normalize unicode
-        .replace(/[\u0300-\u036f]/g, '') // Remove diacritics
-        .replace(/[^a-zA-Z0-9\-_\.]/g, '_') // Replace special chars with underscore
-        .replace(/_{2,}/g, '_') // Replace multiple underscores with single
-        .replace(/^_+|_+$/g, '') // Trim underscores from start/end
-        .substring(0, 50); // Limit length
-      
-      // Ensure we have a valid filename
+      // Ensure we have a valid base name
       if (!baseName || baseName.length === 0) {
         baseName = 'file';
       }
       
-      const finalFilename = `${baseName}-${uniqueSuffix}${ext}`;
-      console.log(`📎 Generated filename: ${finalFilename} (original: ${file.originalname})`);
+      // Generate shorter filename to prevent path length issues
+      const finalFilename = `${baseName}_${timestamp}_${randomSuffix}${ext}`;
+      
+      console.log(`📎 Original: ${file.originalname}`);
+      console.log(`📎 Generated: ${finalFilename}`);
+      console.log(`📎 Final path will be: ${path.join(__dirname, '../uploads/submissions', finalFilename)}`);
       
       cb(null, finalFilename);
     } catch (error) {
       console.error('❌ Error in filename generation:', error);
-      cb(error);
+      // Fallback to simple filename
+      const fallbackName = `file_${Date.now()}${path.extname(file.originalname)}`;
+      console.log(`🔄 Using fallback filename: ${fallbackName}`);
+      cb(null, fallbackName);
     }
   }
 });
 
+// Also add this debugging middleware to your taskRoutes.js:
+router.use((req, res, next) => {
+  console.log(`📡 ${req.method} ${req.path}`);
+  if (req.files && req.files.length > 0) {
+    req.files.forEach(file => {
+      console.log(`📎 File received: ${file.originalname}`);
+      console.log(`📂 Destination: ${file.destination}`);
+      console.log(`📄 Filename: ${file.filename}`);
+      console.log(`📍 Full path: ${file.path}`);
+      console.log(`📊 Size: ${file.size} bytes`);
+    });
+  }
+  next();
+});
 const upload = multer({ 
   storage: storage,
   limits: {
@@ -209,9 +233,12 @@ router.get('/server/:serverId', verifyToken, async (req, res) => {
 });
 
 // Get teams for a server (for task creation)
+// Get teams for a server (for task creation)
 router.get('/server/:serverId/teams', verifyToken, async (req, res) => {
   try {
     const { serverId } = req.params;
+    
+    console.log(`🔍 Fetching teams for server ${serverId} by ${req.user.role} ${req.user.id}`);
     
     const server = await ProjectServer.findById(serverId);
     if (!server) {
@@ -221,28 +248,39 @@ router.get('/server/:serverId/teams', verifyToken, async (req, res) => {
       });
     }
 
+    // Verify faculty owns the server
+    if (req.user.role === 'faculty' && server.faculty.toString() !== req.user.id) {
+      return res.status(403).json({ 
+        message: 'You can only access teams from your own servers',
+        success: false 
+      });
+    }
+
     const teams = await StudentTeam.find({ 
       projectServer: server.code 
-    }).populate('members', 'firstName lastName email');
+    }).populate('members', 'firstName lastName email')
+      .populate('creator', 'firstName lastName email');
 
+    console.log(`📊 Found ${teams.length} teams for server ${server.code}`);
+
+    // Always return success, even with 0 teams
     res.json({ 
       success: true, 
       teams: teams || [],
-      serverCode: server.code
+      serverCode: server.code,
+      message: teams.length === 0 
+        ? 'No teams found in this server. Students need to create teams first.'
+        : `Found ${teams.length} teams`
     });
   } catch (error) {
-    console.error('Error fetching teams:', error);
+    console.error('❌ Error fetching teams:', error);
     res.status(500).json({ 
       message: 'Failed to fetch teams',
-      success: false 
+      success: false,
+      error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message
     });
   }
 });
-
-// Create new task
-// Fix for backend/routes/taskRoutes.js - Create task route
-
-// FIND this section in your taskRoutes.js create route and REPLACE it:
 
 router.post('/create', verifyToken, async (req, res) => {
   try {
@@ -399,7 +437,8 @@ router.post('/create', verifyToken, async (req, res) => {
   }
 });
 
-// Submit task
+
+
 router.post('/:taskId/submit', verifyToken, upload.array('files', 10), async (req, res) => {
   try {
     if (req.user.role !== 'student') {
@@ -415,11 +454,13 @@ router.post('/:taskId/submit', verifyToken, upload.array('files', 10), async (re
     console.log(`📤 Task submission attempt - Task: ${taskId}, Student: ${req.user.id}`);
     console.log(`📎 Files received: ${req.files ? req.files.length : 0}`);
 
+    // Get task details first
     const task = await Task.findById(taskId)
       .populate('team', 'name members')
       .populate('server', 'title code');
 
     if (!task) {
+      // Clean up any uploaded files if task not found
       if (req.files) {
         req.files.forEach(file => {
           if (fs.existsSync(file.path)) {
@@ -433,31 +474,13 @@ router.post('/:taskId/submit', verifyToken, upload.array('files', 10), async (re
       });
     }
 
-    // Validate file types if files are uploaded
-    if (req.files && req.files.length > 0 && task.allowedFileTypes && task.allowedFileTypes.length > 0) {
-      for (const file of req.files) {
-        const ext = path.extname(file.originalname).toLowerCase().substring(1);
-        if (!task.allowedFileTypes.includes(ext)) {
-          // Cleanup uploaded files
-          req.files.forEach(f => {
-            if (fs.existsSync(f.path)) {
-              fs.unlinkSync(f.path);
-            }
-          });
-          return res.status(400).json({
-            message: `File type .${ext} not allowed. Allowed types: ${task.allowedFileTypes.join(', ')}`,
-            success: false
-          });
-        }
-      }
-    }
-
-    // Check if student is part of the assigned team
-    const isTeamMember = task.team.members.some(member => 
+    // Check if student is member of the team this task is assigned to
+    const isMember = task.team.members.some(member => 
       member.toString() === req.user.id
     );
 
-    if (!isTeamMember) {
+    if (!isMember) {
+      // Clean up uploaded files
       if (req.files) {
         req.files.forEach(file => {
           if (fs.existsSync(file.path)) {
@@ -466,47 +489,75 @@ router.post('/:taskId/submit', verifyToken, upload.array('files', 10), async (re
         });
       }
       return res.status(403).json({ 
-        message: 'You can only submit tasks assigned to your teams',
+        message: 'You are not a member of the team assigned to this task',
         success: false 
       });
     }
 
-    // Check if task is still active
-    if (task.status !== 'active') {
-      if (req.files) {
-        req.files.forEach(file => {
-          if (fs.existsSync(file.path)) {
-            fs.unlinkSync(file.path);
+    // ✅ CRITICAL FIX: Verify uploaded files exist before processing
+    const validFiles = [];
+    if (req.files && req.files.length > 0) {
+      for (const file of req.files) {
+        console.log(`🔍 Checking file: ${file.path}`);
+        
+        if (fs.existsSync(file.path)) {
+          console.log(`✅ File exists: ${file.originalname}`);
+          
+          // Validate file types if restrictions exist
+          if (task.allowedFileTypes && task.allowedFileTypes.length > 0) {
+            const ext = path.extname(file.originalname).toLowerCase().substring(1);
+            if (!task.allowedFileTypes.includes(ext)) {
+              console.log(`❌ File type .${ext} not allowed`);
+              fs.unlinkSync(file.path); // Remove invalid file
+              continue;
+            }
           }
-        });
+          
+          validFiles.push({
+            filename: file.filename,
+            originalName: file.originalname,
+            path: file.path,
+            size: file.size,
+            mimetype: file.mimetype,
+            uploadedAt: new Date()
+          });
+        } else {
+          console.error(`❌ File not found at path: ${file.path}`);
+          return res.status(400).json({
+            success: false,
+            message: `File "${file.originalname}" was not properly uploaded. Please try again.`
+          });
+        }
       }
-      return res.status(400).json({ 
-        message: 'Task is not active',
-        success: false 
-      });
     }
 
-    // Check deadline
-    if (new Date() > task.dueDate && !task.allowLateSubmissions) {
-      if (req.files) {
-        req.files.forEach(file => {
-          if (fs.existsSync(file.path)) {
-            fs.unlinkSync(file.path);
-          }
-        });
+    console.log(`📁 Valid files processed: ${validFiles.length}`);
+
+    // Process collaborators
+    let parsedCollaborators = [];
+    if (collaborators) {
+      try {
+        parsedCollaborators = typeof collaborators === 'string' 
+          ? JSON.parse(collaborators) 
+          : collaborators;
+        
+        // Filter out empty emails
+        parsedCollaborators = parsedCollaborators.filter(email => 
+          email && email.trim() && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
+        );
+      } catch (e) {
+        console.log('Could not parse collaborators:', e);
+        parsedCollaborators = [];
       }
-      return res.status(400).json({ 
-        message: 'Task submission deadline has passed',
-        success: false 
-      });
     }
 
-    // Check attempt limits
-    const studentSubmissions = task.submissions.filter(sub => 
+    // Check if student has already submitted (and handle multiple attempts)
+    const existingSubmissions = task.submissions.filter(sub => 
       sub.student.toString() === req.user.id
     );
 
-    if (studentSubmissions.length >= task.maxAttempts) {
+    if (existingSubmissions.length >= task.maxAttempts) {
+      // Clean up uploaded files
       if (req.files) {
         req.files.forEach(file => {
           if (fs.existsSync(file.path)) {
@@ -520,75 +571,48 @@ router.post('/:taskId/submit', verifyToken, upload.array('files', 10), async (re
       });
     }
 
-    // Process files safely
-    const uploadedFiles = [];
-    if (req.files && req.files.length > 0) {
-      for (const file of req.files) {
-        if (!fs.existsSync(file.path)) {
-          console.error(`❌ File not found: ${file.path}`);
-          continue;
-        }
-
-        uploadedFiles.push({
-          filename: file.filename,
-          originalName: file.originalname,
-          path: file.path,
-          size: file.size,
-          mimetype: file.mimetype
-        });
-      }
-    }
-
-    // Process collaborators
-    let parsedCollaborators = [];
-    if (collaborators) {
-      try {
-        parsedCollaborators = typeof collaborators === 'string' 
-          ? JSON.parse(collaborators) 
-          : collaborators;
-      } catch (e) {
-        console.log('Could not parse collaborators:', e);
-      }
-    }
-
-    // Create submission
+    // Create submission object
     const submission = {
       student: req.user.id,
       comment: comment || '',
       submittedAt: new Date(),
       status: 'submitted',
       isLate: new Date() > task.dueDate,
-      attemptNumber: studentSubmissions.length + 1,
+      attemptNumber: existingSubmissions.length + 1,
       collaborators: parsedCollaborators,
-      files: uploadedFiles
+      files: validFiles
     };
 
+    // Add submission to task
     task.submissions.push(submission);
     await task.save();
 
-    console.log(`✅ Task ${taskId} submitted by student ${req.user.id}`);
+    console.log(`✅ Task ${taskId} submitted successfully by student ${req.user.id}`);
 
     res.status(201).json({
       success: true,
       message: 'Task submitted successfully',
       submission: {
+        id: submission._id || Date.now().toString(),
         comment: submission.comment,
         submittedAt: submission.submittedAt,
-        filesCount: uploadedFiles.length
+        filesCount: validFiles.length,
+        status: 'submitted'
       }
     });
 
   } catch (error) {
     console.error('❌ Submit task error:', error);
     
-    // Cleanup uploaded files on error
+    // Clean up any uploaded files on error
     if (req.files) {
       req.files.forEach(file => {
         if (fs.existsSync(file.path)) {
           try {
             fs.unlinkSync(file.path);
-          } catch (unlinkError) {
-            console.error('❌ Error cleaning up file:', unlinkError);
+            console.log(`🧹 Cleaned up file: ${file.filename}`);
+          } catch (cleanupError) {
+            console.error(`❌ Failed to clean up file: ${file.filename}`, cleanupError);
           }
         }
       });
@@ -599,6 +623,34 @@ router.post('/:taskId/submit', verifyToken, upload.array('files', 10), async (re
       success: false 
     });
   }
+});
+
+// 4. Add a route to serve uploaded files
+router.get('/files/:filename', (req, res) => {
+  const { filename } = req.params;
+  const filePath = path.join(__dirname, '../uploads/submissions', filename);
+  
+  console.log(`📁 File request: ${filename} at ${filePath}`);
+  
+  if (fs.existsSync(filePath)) {
+    res.sendFile(path.resolve(filePath));
+  } else {
+    console.error(`❌ File not found: ${filePath}`);
+    res.status(404).json({ 
+      message: 'File not found',
+      success: false 
+    });
+  }
+});
+
+// 5. Debug middleware to log all file operations
+router.use((req, res, next) => {
+  if (req.files) {
+    console.log(`📎 File upload detected on ${req.path}:`, 
+      req.files.map(f => ({ name: f.originalname, size: f.size, path: f.path }))
+    );
+  }
+  next();
 });
 
 // Grade task submission

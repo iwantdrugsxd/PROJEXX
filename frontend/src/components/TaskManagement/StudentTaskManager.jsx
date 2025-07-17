@@ -118,203 +118,268 @@ const StudentTaskManager = () => {
     setSelectedTask(task);
   };
 
-  const handleSubmitClick = (task) => {
-    setSelectedTask(task);
-    setShowSubmissionModal(true);
-    setSubmissionData({
-      comment: '',
-      collaborators: [''],
-      files: []
-    });
-    setErrors({});
-  };
+ // Corrected functions for StudentTaskManager.jsx
+// Replace your existing functions with these optimized versions:
 
-  const handleCollaboratorChange = (index, value) => {
-    const newCollaborators = [...submissionData.collaborators];
-    newCollaborators[index] = value;
-    setSubmissionData(prev => ({
-      ...prev,
-      collaborators: newCollaborators
-    }));
-  };
+const handleSubmitClick = (task) => {
+  setSelectedTask(task);
+  setShowSubmissionModal(true);
+  setSubmissionData({
+    comment: '',
+    collaborators: [''],
+    files: []
+  });
+  setErrors({});
+};
 
-  const addCollaborator = () => {
-    setSubmissionData(prev => ({
-      ...prev,
-      collaborators: [...prev.collaborators, '']
-    }));
-  };
+const handleCollaboratorChange = (index, value) => {
+  const newCollaborators = [...submissionData.collaborators];
+  newCollaborators[index] = value;
+  setSubmissionData(prev => ({
+    ...prev,
+    collaborators: newCollaborators
+  }));
+};
 
-  const removeCollaborator = (index) => {
-    const newCollaborators = submissionData.collaborators.filter((_, i) => i !== index);
-    setSubmissionData(prev => ({
-      ...prev,
-      collaborators: newCollaborators
-    }));
-  };
+const addCollaborator = () => {
+  setSubmissionData(prev => ({
+    ...prev,
+    collaborators: [...prev.collaborators, '']
+  }));
+};
 
-  // ✅ FIXED: File selection handler with proper validation
-  const handleFileSelect = (e) => {
-    const files = Array.from(e.target.files);
-    const maxSize = selectedTask?.maxFileSize || 10485760; // 10MB default
-    
-    console.log('🔍 Selected task:', selectedTask);
-    console.log('🔍 Task allowedFileTypes:', selectedTask?.allowedFileTypes);
-    console.log('🔍 Is allowedFileTypes array?:', Array.isArray(selectedTask?.allowedFileTypes));
-    console.log('🔍 allowedFileTypes length:', selectedTask?.allowedFileTypes?.length);
-    
-    // ✅ BETTER VALIDATION: Check if file uploads are allowed at all
-    if (!selectedTask?.allowFileUpload) {
-      setErrors({ files: 'File uploads are not allowed for this task' });
-      return;
+const removeCollaborator = (index) => {
+  const newCollaborators = submissionData.collaborators.filter((_, i) => i !== index);
+  setSubmissionData(prev => ({
+    ...prev,
+    collaborators: newCollaborators
+  }));
+};
+
+// ✅ FIXED: Unified file selection handler
+const handleFileSelect = (e) => {
+  const files = Array.from(e.target.files);
+  const maxSize = selectedTask?.maxFileSize || 10485760; // 10MB default
+  
+  console.log('🔍 Processing file selection...');
+  console.log('📎 Selected files:', files.length);
+  console.log('🔍 Task file upload allowed:', selectedTask?.allowFileUpload);
+  console.log('🔍 Allowed file types:', selectedTask?.allowedFileTypes);
+  
+  // Check if file uploads are allowed
+  if (!selectedTask?.allowFileUpload) {
+    setErrors({ files: 'File uploads are not allowed for this task' });
+    return;
+  }
+  
+  // Get allowed file types
+  let allowedTypes = selectedTask?.allowedFileTypes;
+  
+  // Handle different formats of allowedFileTypes
+  if (typeof allowedTypes === 'string') {
+    try {
+      allowedTypes = JSON.parse(allowedTypes);
+    } catch (e) {
+      allowedTypes = allowedTypes.split(',').map(type => type.trim());
     }
+  }
+  
+  if (!Array.isArray(allowedTypes)) {
+    allowedTypes = [];
+  }
+  
+  console.log('🔍 Processed allowed types:', allowedTypes);
+  
+  const validFiles = [];
+  const fileErrors = [];
+
+  files.forEach(file => {
+    const fileExtension = file.name.split('.').pop()?.toLowerCase();
     
-    // ✅ BETTER VALIDATION: Check allowed file types
-    let allowedTypes = selectedTask?.allowedFileTypes;
-    if (!allowedTypes || !Array.isArray(allowedTypes) || allowedTypes.length === 0) {
-      setErrors({ files: 'No file types are allowed for this task' });
-      return;
+    console.log(`🔍 Validating file: ${file.name}`);
+    console.log(`   - Extension: .${fileExtension}`);
+    console.log(`   - Size: ${file.size} bytes`);
+    console.log(`   - Max size: ${maxSize} bytes`);
+    
+    // Validate file type (if restrictions exist)
+    if (allowedTypes.length > 0 && !allowedTypes.includes(fileExtension)) {
+      const errorMsg = `${file.name}: File type ".${fileExtension}" not allowed. Allowed: ${allowedTypes.join(', ')}`;
+      fileErrors.push(errorMsg);
+      console.log('❌ File type rejected:', errorMsg);
     }
-    
-    console.log('🔍 Final allowedTypes for validation:', allowedTypes);
-    
-    const validFiles = [];
-    const fileErrors = [];
-
-    files.forEach(file => {
-      const fileExtension = file.name.split('.').pop()?.toLowerCase();
-      
-      console.log(`🔍 Checking file "${file.name}" with extension "${fileExtension}"`);
-      console.log(`🔍 Is "${fileExtension}" in allowedTypes?`, allowedTypes.includes(fileExtension));
-      
-      if (!allowedTypes.includes(fileExtension)) {
-        const errorMsg = `${file.name}: File type ".${fileExtension}" not allowed. Allowed types: ${allowedTypes.join(', ')}`;
-        fileErrors.push(errorMsg);
-        console.log('❌ File rejected:', errorMsg);
-      } else if (file.size > maxSize) {
-        const errorMsg = `${file.name}: File too large (max ${Math.round(maxSize / 1024 / 1024)}MB)`;
-        fileErrors.push(errorMsg);
-        console.log('❌ File too large:', errorMsg);
-      } else {
-        validFiles.push(file);
-        console.log('✅ File accepted:', file.name);
-      }
-    });
-
-    if (fileErrors.length > 0) {
-      setErrors(prev => ({ ...prev, files: fileErrors.join(', ') }));
-    } else {
-      setErrors(prev => ({ ...prev, files: null }));
+    // Validate file size
+    else if (file.size > maxSize) {
+      const errorMsg = `${file.name}: File too large (max ${Math.round(maxSize / 1024 / 1024)}MB)`;
+      fileErrors.push(errorMsg);
+      console.log('❌ File size rejected:', errorMsg);
     }
+    // File is valid
+    else {
+      validFiles.push(file);
+      console.log('✅ File accepted:', file.name);
+    }
+  });
 
+  // Update errors and files
+  if (fileErrors.length > 0) {
+    setErrors(prev => ({ ...prev, files: fileErrors.join('\n') }));
+  } else {
+    setErrors(prev => ({ ...prev, files: null }));
+  }
+
+  if (validFiles.length > 0) {
     setSubmissionData(prev => ({
       ...prev,
       files: [...prev.files, ...validFiles]
     }));
-  };
+  }
 
-  const removeFile = (index) => {
-    setSubmissionData(prev => ({
-      ...prev,
-      files: prev.files.filter((_, i) => i !== index)
-    }));
-  };
+  // Clear the input
+  e.target.value = '';
+};
 
-  const validateSubmission = () => {
-    const newErrors = {};
+// ✅ File removal function
+const removeFile = (index) => {
+  console.log(`🗑️ Removing file at index ${index}`);
+  setSubmissionData(prev => ({
+    ...prev,
+    files: prev.files.filter((_, i) => i !== index)
+  }));
+};
 
-    if (!submissionData.comment.trim()) {
-      newErrors.comment = 'Please provide a comment about your submission';
-    }
+// ✅ Form validation
+const validateSubmission = () => {
+  const newErrors = {};
 
-    if (submissionData.files.length === 0 && selectedTask?.allowFileUpload) {
-      newErrors.files = 'Please attach at least one file';
-    }
+  // Validate comment
+  if (!submissionData.comment.trim()) {
+    newErrors.comment = 'Please provide a comment about your submission';
+  }
 
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
+  // Validate files if file upload is required
+  if (selectedTask?.allowFileUpload && submissionData.files.length === 0) {
+    newErrors.files = 'Please attach at least one file';
+  }
 
-  // ✅ FIXED: Submission handler with better error handling
-  const handleSubmission = async () => {
-    if (!validateSubmission()) {
-      return;
-    }
+  // Validate collaborators format
+  const invalidEmails = submissionData.collaborators.filter(email => 
+    email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
+  );
+  
+  if (invalidEmails.length > 0) {
+    newErrors.collaborators = 'Please enter valid email addresses for collaborators';
+  }
 
-    setSubmitting(true);
+  setErrors(newErrors);
+  return Object.keys(newErrors).length === 0;
+};
 
-    try {
-      const formData = new FormData();
-      formData.append('comment', submissionData.comment.trim());
-      
-      const validCollaborators = submissionData.collaborators.filter(email => 
-        email.trim() && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
-      );
+// ✅ MAIN SUBMISSION HANDLER - This is the primary function
+const handleSubmission = async () => {
+  console.log('🚀 Starting task submission...');
+  
+  // Validate form first
+  if (!validateSubmission()) {
+    console.log('❌ Validation failed');
+    return;
+  }
+
+  setSubmitting(true);
+  setErrors({});
+
+  try {
+    // Create FormData
+    const formData = new FormData();
+    formData.append('comment', submissionData.comment.trim());
+    
+    // Process collaborators
+    const validCollaborators = submissionData.collaborators.filter(email => 
+      email.trim() && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
+    );
+    
+    if (validCollaborators.length > 0) {
       formData.append('collaborators', JSON.stringify(validCollaborators));
-
-      // ✅ ADD FILE VALIDATION BEFORE UPLOAD
-      const validFiles = submissionData.files.filter(file => {
-        if (!file || !file.name) {
-          console.error('Invalid file object:', file);
-          return false;
-        }
-        
-        const extension = file.name.split('.').pop()?.toLowerCase();
-        const allowedTypes = selectedTask?.allowedFileTypes || [];
-        
-        if (allowedTypes.length > 0 && !allowedTypes.includes(extension)) {
-          console.error(`File type .${extension} not allowed`);
-          return false;
-        }
-        
-        return true;
-      });
-
-      if (validFiles.length !== submissionData.files.length) {
-        setErrors({ files: 'Some files were removed due to invalid types' });
-        setSubmissionData(prev => ({ ...prev, files: validFiles }));
-        setSubmitting(false);
-        return;
-      }
-
-      validFiles.forEach((file, index) => {
-        console.log(`📎 Adding file ${index + 1}:`, file.name);
-        formData.append('files', file);
-      });
-
-      console.log('📤 Submitting task with', validFiles.length, 'files');
-
-      const response = await fetch(`${API_BASE}/tasks/${selectedTask._id}/submit`, {
-        method: 'POST',
-        credentials: 'include',
-        body: formData
-      });
-
-      const data = await response.json();
-
-      if (data.success) {
-        console.log('✅ Task submitted successfully');
-        setTasks(prev => prev.map(task => 
-          task._id === selectedTask._id 
-            ? { ...task, submissionStatus: 'submitted' }
-            : task
-        ));
-        
-        setShowSubmissionModal(false);
-        setSelectedTask(null);
-        setSubmissionData({ comment: '', collaborators: [''], files: [] });
-      } else {
-        console.error('❌ Submission failed:', data.message);
-        setErrors({ submit: data.message || 'Failed to submit task' });
-      }
-    } catch (error) {
-      console.error('❌ Submission error:', error);
-      setErrors({ submit: 'Network error. Please check your connection and try again.' });
-    } finally {
-      setSubmitting(false);
     }
-  };
 
+    // Process files
+    console.log(`📎 Processing ${submissionData.files.length} files for submission...`);
+    
+    let validFileCount = 0;
+    submissionData.files.forEach((file, index) => {
+      if (file && file.name && file.size > 0) {
+        formData.append('files', file);
+        validFileCount++;
+        console.log(`✅ Added file ${index + 1}: ${file.name} (${file.size} bytes)`);
+      } else {
+        console.error(`❌ Invalid file at index ${index}:`, file);
+      }
+    });
+
+    console.log(`📤 Submitting to: ${API_BASE}/tasks/${selectedTask._id}/submit`);
+    console.log(`📋 Submission details:`);
+    console.log(`   - Comment: ${submissionData.comment.trim()}`);
+    console.log(`   - Collaborators: ${validCollaborators.length}`);
+    console.log(`   - Files: ${validFileCount}`);
+
+    // Submit to server
+    const response = await fetch(`${API_BASE}/tasks/${selectedTask._id}/submit`, {
+      method: 'POST',
+      credentials: 'include',
+      body: formData
+    });
+
+    console.log(`📡 Response status: ${response.status}`);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`❌ HTTP Error ${response.status}:`, errorText);
+      throw new Error(`Server error (${response.status}): ${errorText}`);
+    }
+
+    const data = await response.json();
+    console.log('📦 Server response:', data);
+
+    if (data.success) {
+      console.log('🎉 Task submitted successfully!');
+      
+      // Update local task state
+      setTasks(prev => prev.map(task => 
+        task._id === selectedTask._id 
+          ? { 
+              ...task, 
+              submissionStatus: 'submitted',
+              submissionDate: new Date().toISOString()
+            }
+          : task
+      ));
+      
+      // Close modal and reset form
+      setShowSubmissionModal(false);
+      setSelectedTask(null);
+      setSubmissionData({ comment: '', collaborators: [''], files: [] });
+      setErrors({});
+      
+      // Show success message
+      alert('Task submitted successfully!');
+      
+    } else {
+      console.error('❌ Submission failed:', data.message);
+      setErrors({ submit: data.message || 'Failed to submit task' });
+    }
+
+  } catch (error) {
+    console.error('❌ Submission error:', error);
+    setErrors({ 
+      submit: error.message || 'Network error. Please check your connection and try again.' 
+    });
+  } finally {
+    setSubmitting(false);
+  }
+};
+
+// ✅ Alternative handler names for compatibility
+const handleFileUpload = handleFileSelect; // Alias for consistency
+const handleSubmit = handleSubmission;     // Alias for form submission
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">

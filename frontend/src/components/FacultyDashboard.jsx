@@ -408,12 +408,51 @@ const EnhancedFacultyDashboard = ({ user, onLogout }) => {
   const handleRefresh = () => {
     fetchDashboardData();
   };
+  // In FacultyDashboard.jsx, replace your handleServerSelection function:
+
+const handleServerSelection = (server) => {
+  console.log('🎯 Server selected:', server);
+  
+  // Close any existing task creator first
+  setShowTaskCreator(false);
+  
+  // Small delay to allow cleanup
+  setTimeout(() => {
+    setSelectedServer(server);
+    setActiveTab('tasks');
+    setError(null);
+    
+    // Refresh tasks for the selected server
+    if (server && server._id) {
+      fetchServerTasks(server._id);
+    }
+  }, 100);
+};
+
+  const fetchServerTasks = async (serverId) => {
+    try {
+      setLoading(true);
+      const response = await fetch(`${API_BASE}/tasks/server/${serverId}`, {
+        credentials: 'include'
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log('📋 Server tasks loaded:', data);
+      }
+    } catch (error) {
+      console.error('❌ Failed to fetch server tasks:', error);
+      setError('Failed to load server tasks');
+    } finally {
+      setLoading(false);
+    }
+  };
 const EnhancedServerCard = ({ server, isSelected, onClick }) => {
     const stats = server.stats || {};
     
     return (
       <div 
-        onClick={onClick}
+        onClick={() => handleServerSelection(server)}
         className={`p-6 rounded-xl border-2 cursor-pointer transition-all duration-200 ${
           isSelected 
             ? 'border-purple-500 bg-purple-50' 
@@ -937,7 +976,7 @@ const ServersTab = () => (
               {/* Action Buttons */}
               <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-100">
                 <button
-                  onClick={() => setSelectedServer(server)}
+                   onClick={() => handleServerSelection(server)}
                   className="flex items-center space-x-2 px-4 py-2 bg-purple-50 hover:bg-purple-100 text-purple-600 rounded-lg transition-colors"
                 >
                   <Eye className="w-4 h-4" />
@@ -983,7 +1022,7 @@ const ServersTab = () => (
                 {servers.map((server) => (
                   <button
                     key={server._id}
-                    onClick={() => setSelectedServer(server)}
+                     onClick={() => handleServerSelection(server)}
                     className="p-4 border-2 border-gray-200 rounded-xl hover:border-purple-300 hover:bg-purple-50 transition-colors text-left"
                   >
                     <div className="flex items-center justify-between mb-2">
