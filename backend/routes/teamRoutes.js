@@ -559,5 +559,129 @@ router.get("/search/:query", verifyToken, async (req, res) => {
     });
   }
 });
+// Add this to your existing teamRoutes.js file - insert this new endpoint
 
+// ✅ Get available teams for student to join (teams they're not already in)
+router.get("/available", verifyToken, async (req, res) => {
+  try {
+    if (req.user.role !== "student") {
+      return res.status(403).json({ 
+        message: "Only students can access this endpoint",
+        success: false 
+      });
+    }
+
+    // Find teams where the student is NOT a member
+    const availableTeams = await StudentTeam.find({ 
+      members: { $ne: req.user.id } 
+    })
+    .populate("members", "firstName lastName email")
+    .populate("creator", "firstName lastName email")
+    .sort({ createdAt: -1 })
+    .limit(20); // Limit to 20 teams for performance
+
+    // Filter out teams from projects the student is already in
+    const studentTeams = await StudentTeam.find({ members: req.user.id });
+    const studentProjectCodes = studentTeams.map(team => team.projectServer);
+    
+    const filteredTeams = availableTeams.filter(team => {
+      // Allow joining multiple teams in the same project server
+      // Remove this filter if you want to restrict to one team per project
+      return true;
+    });
+
+    res.status(200).json({
+      success: true,
+      teams: filteredTeams,
+      message: filteredTeams.length === 0 ? "No available teams to join" : `Found ${filteredTeams.length} available teams`
+    });
+  } catch (err) {
+    console.error("Error fetching available teams:", err);
+    res.status(500).json({ 
+      message: "Failed to fetch available teams", 
+      error: process.env.NODE_ENV === 'production' ? "Internal server error" : err.message,
+      success: false 
+    });
+  }
+});
+
+// ✅ Leave a team
+router.post("/leave/:teamId", verifyToken, async (req, res) => {
+  try {
+    if (req.user.role !== "student") {
+      return res.status(403).json({ 
+        message: "Only students can leave teams",
+        success: false 
+      });
+    }
+
+    const { teamId } = req.params;
+    const team = await StudentTeam.findById(teamId);
+
+    if (!team) {
+      return res.status(404).json({ 
+        message: "Team not found",
+        success: false 
+      });
+    }
+
+    // Check if student is a member
+    if (!team.members.includes(req.user.id)) {
+      return res.status(400).json({ 
+        message: "You are not a member of this team",
+        success: false 
+      });
+    }
+
+    // Check if student is the creator and there are other members
+    if (team.creator.toString() === req.user.id && team.members.length > 1) {
+      return res.status(400).json({ 
+        message: "You cannot leave a team you created while other members exist. Transfer leadership or delete the team instead.",
+        success: false 
+      });
+    }
+
+    // If student is the only member and creator, delete the team
+    if (team.creator.toString() === req.user.id && team.members.length === 1) {
+      await StudentTeam.findByIdAndDelete(teamId);
+      
+      // Remove team from student's joinedTeams
+      await Student.findByIdAndUpdate(
+        req.user.id,
+        { $pull: { joinedTeams: teamId } }
+      );
+
+      console.log(`✅ Student ${req.user.id} deleted empty team ${team.name}`);
+
+      return res.status(200).json({
+        message: "Team deleted successfully (you were the only member)",
+        success: true
+      });
+    }
+
+    // Remove student from team
+    team.members = team.members.filter(memberId => memberId.toString() !== req.user.id);
+    await team.save();
+
+    // Remove team from student's joinedTeams
+    await Student.findByIdAndUpdate(
+      req.user.id,
+      { $pull: { joinedTeams: teamId } }
+    );
+
+    console.log(`✅ Student ${req.user.id} left team ${team.name}`);
+
+    res.status(200).json({
+      message: "Successfully left the team",
+      success: true
+    });
+  } catch (err) {
+    console.error("Error leaving team:", err);
+    res.status(500).json({ 
+      message: "Failed to leave team", 
+      error: process.env.NODE_ENV === 'production' ? "Internal server error" : err.message,
+      success: false 
+    });
+  }
+});
 module.exports = router;

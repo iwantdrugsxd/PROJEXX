@@ -147,6 +147,7 @@ const projectServerRoutes = require("./routes/projectServerRoutes");
 const teamRoutes = require("./routes/teamRoutes.js");
 const taskRoutes = require("./routes/taskRoutes.js");
 const notificationRoutes = require('./routes/notificationRoutes');
+const analyticsRoutes = require("./routes/analyticsRoutes");
 
 // Import new feature routes (with error handling)
 let fileRoutes, calendarRoutes, messagingRoutes, settingsRoutes;
@@ -405,7 +406,7 @@ app.use("/api/projectServers", projectServerRoutes);
 app.use("/api/teamRoutes", teamRoutes);
 app.use("/api/tasks", taskRoutes);
 app.use('/api/notifications', notificationRoutes);
-
+app.use("/api/analytics", analyticsRoutes);
 // Optional feature routes (only if modules exist)
 if (fileRoutes) {
   app.use("/api/files", fileRoutes);

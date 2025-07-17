@@ -128,6 +128,7 @@ router.post("/create", verifyToken, async (req, res) => {
 });
 
 // ✅ Get faculty's project servers WITH TEAMS AND STATS
+// ✅ FIXED: Get faculty's project servers WITH TEAMS AND STATS
 router.get("/faculty-servers", verifyToken, async (req, res) => {
   try {
     console.log(`📊 Faculty ${req.user.id} requesting their servers`);
@@ -150,14 +151,15 @@ router.get("/faculty-servers", verifyToken, async (req, res) => {
       projectServers.map(async (server) => {
         console.log(`📊 Processing server: ${server.title} (${server.code})`);
         
-        // Get teams for this server using the server code
+        // ✅ FIXED: Get teams using server.code (not server._id)
         const teams = await StudentTeam.find({ 
-          projectServer: server.code 
-        }).populate('members', '_id firstName lastName email');
+          projectServer: server.code  // Use the server CODE, not _id
+        }).populate('members', '_id firstName lastName email')
+          .populate('creator', 'firstName lastName email');
         
         console.log(`📊 Found ${teams.length} teams for server ${server.code}`);
         
-        // Get tasks for this server
+        // Get tasks for this server (tasks use server._id)
         const tasksCount = await Task.countDocuments({ 
           server: server._id 
         });
@@ -174,14 +176,15 @@ router.get("/faculty-servers", verifyToken, async (req, res) => {
         
         const serverObj = server.toObject();
         
-        // Add teams data
+        // ✅ FIXED: Add complete team data with all details
         serverObj.teams = teams.map(team => ({
           _id: team._id,
           name: team.name,
           members: team.members,
           creator: team.creator,
           createdAt: team.createdAt,
-          projectServer: team.projectServer
+          projectServer: team.projectServer,
+          description: team.description || ''
         }));
         
         // Add statistics
@@ -189,7 +192,9 @@ router.get("/faculty-servers", verifyToken, async (req, res) => {
           teamsCount: teams.length,
           tasksCount,
           studentsCount: uniqueStudents.size,
-          lastActivity: server.updatedAt
+          lastActivity: teams.length > 0 
+            ? Math.max(...teams.map(t => new Date(t.createdAt).getTime())) 
+            : server.updatedAt
         };
         
         console.log(`📊 Server ${server.code} stats: ${teams.length} teams, ${tasksCount} tasks, ${uniqueStudents.size} students`);
@@ -215,8 +220,8 @@ router.get("/faculty-servers", verifyToken, async (req, res) => {
     });
   }
 });
-
 // ✅ Get student's project servers (based on team membership)
+// ✅ FIXED: Get student's project servers (based on team membership)
 router.get("/student-servers", verifyToken, async (req, res) => {
   try {
     console.log(`📊 Student ${req.user.id} requesting their servers via teams`);
@@ -231,7 +236,8 @@ router.get("/student-servers", verifyToken, async (req, res) => {
     // Get teams the student is part of
     const studentTeams = await StudentTeam.find({ 
       members: req.user.id 
-    }).populate('members', 'firstName lastName email');
+    }).populate('members', 'firstName lastName email')
+      .populate('creator', 'firstName lastName email');
 
     console.log(`📊 Student ${req.user.id} is in ${studentTeams.length} teams`);
 
@@ -257,18 +263,23 @@ router.get("/student-servers", verifyToken, async (req, res) => {
 
     console.log(`📊 Found ${projectServers.length} servers for codes:`, serverCodes);
 
-    // Add team information to each server
+    // ✅ FIXED: Add complete team information to each server
     const serversWithTeams = projectServers.map(server => {
       const serverObj = server.toObject();
-      serverObj.studentTeams = studentTeams
-        .filter(team => team.projectServer === server.code)
-        .map(team => ({
-          id: team._id,
-          name: team.name,
-          members: team.members,
-          creator: team.creator,
-          createdAt: team.createdAt
-        }));
+      
+      // Get teams for this specific server
+      const serverTeams = studentTeams.filter(team => team.projectServer === server.code);
+      
+      serverObj.studentTeams = serverTeams.map(team => ({
+        id: team._id,
+        _id: team._id,  // Include both for compatibility
+        name: team.name,
+        members: team.members,
+        creator: team.creator,
+        createdAt: team.createdAt,
+        description: team.description || ''
+      }));
+      
       return serverObj;
     });
 
