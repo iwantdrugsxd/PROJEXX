@@ -1,43 +1,20 @@
-// ===== backend/routes/fileRoutes.js (COMPLETE FIXED FILE) =====
-const express = require("express");
+// backend/routes/fileRoutes.js
+const express = require('express');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
+const crypto = require('crypto');
+const verifyToken = require('../middleware/verifyToken');
+
 const router = express.Router();
-const multer = require("multer");
-const path = require("path");
-const fs = require("fs");
-const File = require("../models/fileSchema");
-const verifyToken = require("../middleware/verifyToken");
 
-console.log("🔧 fileRoutes.js loaded");
-
-// ✅ FIXED: Enhanced directory creation
-const createUploadDirectories = () => {
-  const baseUploadsDir = path.join(__dirname, '../uploads');
-  const directories = [
-    baseUploadsDir,
-    path.join(baseUploadsDir, 'faculty'),
-    path.join(baseUploadsDir, 'student'),
-    path.join(baseUploadsDir, 'profiles'),
-    path.join(baseUploadsDir, 'general')
-  ];
-
-  directories.forEach(dir => {
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-      console.log(`📁 Created directory: ${dir}`);
-    }
-  });
-
-  return baseUploadsDir;
-};
-
-const uploadsDir = createUploadDirectories();
-
-// ✅ FIXED: Enhanced multer configuration with filename sanitization
+// File storage configuration
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const userRole = req.user?.role || 'general';
-    const uploadPath = path.join(uploadsDir, userRole);
+    const userRole = req.user?.role || 'unknown';
+    const uploadPath = path.join(__dirname, '../uploads', userRole);
     
+    // Ensure directory exists
     if (!fs.existsSync(uploadPath)) {
       fs.mkdirSync(uploadPath, { recursive: true });
     }
@@ -45,597 +22,618 @@ const storage = multer.diskStorage({
     cb(null, uploadPath);
   },
   filename: (req, file, cb) => {
-    try {
-      const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-      const ext = path.extname(file.originalname).toLowerCase();
-      
-      // ✅ CRITICAL FIX: Sanitize filename to prevent ENOENT errors
-      let baseName = path.basename(file.originalname, path.extname(file.originalname));
-      
-      baseName = baseName
-        .normalize('NFD') // Normalize unicode
-        .replace(/[\u0300-\u036f]/g, '') // Remove diacritics
-        .replace(/[^a-zA-Z0-9\-_\.]/g, '_') // Replace spaces and special chars
-        .replace(/_{2,}/g, '_') // Replace multiple underscores
-        .replace(/^_+|_+$/g, '') // Remove leading/trailing underscores
-        .substring(0, 50) // Limit length
-        .toLowerCase(); // Convert to lowercase
-      
-      if (!baseName || baseName.length === 0) {
-        baseName = 'file';
-      }
-      
-      const safeFilename = `${baseName}_${uniqueSuffix}${ext}`;
-      
-      console.log(`📁 General file upload - Original: "${file.originalname}"`);
-      console.log(`📁 General file upload - Sanitized: "${safeFilename}"`);
-      
-      cb(null, safeFilename);
-    } catch (error) {
-      console.error('❌ Error generating safe filename:', error);
-      const fallbackName = `file_${Date.now()}_${Math.round(Math.random() * 1E9)}${path.extname(file.originalname).toLowerCase()}`;
-      cb(null, fallbackName);
-    }
+    // Generate unique filename with timestamp and hash
+    const timestamp = Date.now();
+    const randomHash = crypto.randomBytes(6).toString('hex');
+    const ext = path.extname(file.originalname);
+    const baseName = path.basename(file.originalname, ext)
+      .replace(/[^a-zA-Z0-9]/g, '_')
+      .substring(0, 30);
+    
+    const filename = `${baseName}_${timestamp}_${randomHash}${ext}`;
+    cb(null, filename);
   }
 });
-
-const fileFilter = (req, file, cb) => {
-  // Allow specific file types
-  const allowedTypes = [
-    'application/pdf',
-    'application/msword',
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    'application/vnd.ms-excel',
-    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    'application/vnd.ms-powerpoint',
-    'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-    'text/plain',
-    'image/jpeg',
-    'image/png',
-    'image/gif',
-    'image/bmp',
-    'image/webp',
-    'application/zip',
-    'application/x-zip-compressed',
-    'application/x-rar-compressed'
-  ];
-
-  if (allowedTypes.includes(file.mimetype)) {
-    console.log(`✅ File type accepted: ${file.mimetype}`);
-    cb(null, true);
-  } else {
-    console.log(`❌ File type rejected: ${file.mimetype}`);
-    cb(new Error('Invalid file type. Only documents, images, and archives are allowed.'), false);
-  }
-};
 
 const upload = multer({
   storage: storage,
-  fileFilter: fileFilter,
   limits: {
-    fileSize: 10 * 1024 * 1024 // 10MB limit
-  }
-});
-
-// ✅ Upload single file
-router.post("/upload", verifyToken, upload.single("file"), async (req, res) => {
-  console.log("🎯 File upload route hit");
-  console.log("User:", req.user?.email);
-  console.log("File uploaded:", req.file ? req.file.filename : 'none');
-  
-  try {
-    if (!req.file) {
-      return res.status(400).json({
-        message: "No file uploaded",
-        success: false
-      });
-    }
-
-    // ✅ CRITICAL: Verify file exists after upload
-    if (!fs.existsSync(req.file.path)) {
-      console.error(`❌ File not found after upload: ${req.file.path}`);
-      return res.status(500).json({
-        message: "File upload failed - file not found after upload",
-        success: false
-      });
-    }
-
-    const { taskId, description, category = 'general' } = req.body;
-
-    // Save file metadata to database
-    const fileDoc = new File({
-      originalName: req.file.originalname,
-      filename: req.file.filename,
-      path: req.file.path,
-      size: req.file.size,
-      mimetype: req.file.mimetype,
-      uploadedBy: req.user.id,
-      uploaderModel: req.user.role === "faculty" ? "Faculty" : "Student",
-      taskId: taskId || null,
-      description: description || "",
-      category
-    });
-
-    await fileDoc.save();
-
-    console.log(`✅ File uploaded and saved: ${req.file.filename}`);
-
-    res.status(201).json({
-      message: "File uploaded successfully",
-      success: true,
-      file: {
-        id: fileDoc._id,
-        originalName: fileDoc.originalName,
-        filename: fileDoc.filename,
-        size: fileDoc.size,
-        mimetype: fileDoc.mimetype,
-        uploadedAt: fileDoc.uploadedAt,
-        description: fileDoc.description,
-        category: fileDoc.category
-      }
-    });
-  } catch (err) {
-    console.error("❌ File upload error:", err);
+    fileSize: 50 * 1024 * 1024, // 50MB limit
+    files: 10 // Maximum 10 files per upload
+  },
+  fileFilter: (req, file, cb) => {
+    // Basic security check - reject executable files
+    const dangerousExts = ['.exe', '.bat', '.cmd', '.com', '.pif', '.scr', '.vbs', '.js'];
+    const ext = path.extname(file.originalname).toLowerCase();
     
-    // Clean up file if database save failed
-    if (req.file && fs.existsSync(req.file.path)) {
-      try {
-        fs.unlinkSync(req.file.path);
-        console.log("🗑️ Cleaned up file after database error");
-      } catch (unlinkError) {
-        console.error("❌ Failed to cleanup file:", unlinkError);
-      }
+    if (dangerousExts.includes(ext)) {
+      return cb(new Error('File type not allowed for security reasons'), false);
     }
-
-    res.status(500).json({
-      message: err.message || "File upload failed",
-      success: false
-    });
+    
+    cb(null, true);
   }
 });
 
-// ✅ Upload multiple files
-router.post("/upload-multiple", verifyToken, upload.array("files", 5), async (req, res) => {
-  console.log("🎯 Multiple file upload route hit");
-  console.log("User:", req.user?.email);
-  console.log("Files uploaded:", req.files?.length || 0);
-  
+// File metadata schema (if using MongoDB)
+const FileSchema = {
+  filename: String,
+  originalName: String,
+  path: String,
+  size: Number,
+  mimetype: String,
+  uploadedBy: String,
+  taskId: String,
+  studentId: String,
+  uploadedAt: Date,
+  isActive: Boolean,
+  downloadCount: Number,
+  versions: Array
+};
+
+// In-memory file store (replace with database in production)
+let fileStore = {};
+
+// ✅ Upload single or multiple files
+router.post('/upload', verifyToken, upload.array('files', 10), async (req, res) => {
   try {
     if (!req.files || req.files.length === 0) {
       return res.status(400).json({
-        message: "No files uploaded",
-        success: false
+        success: false,
+        message: 'No files uploaded'
       });
     }
 
-    // ✅ CRITICAL: Verify all files exist after upload
-    const missingFiles = req.files.filter(file => !fs.existsSync(file.path));
-    if (missingFiles.length > 0) {
-      console.error(`❌ ${missingFiles.length} files not found after upload`);
-      // Cleanup existing files
-      req.files.forEach(file => {
-        if (fs.existsSync(file.path)) {
-          fs.unlinkSync(file.path);
-        }
-      });
-      return res.status(500).json({
-        message: "Some files were not uploaded correctly",
-        success: false
-      });
-    }
-
-    const { taskId, description, category = 'general' } = req.body;
+    const { taskId, studentId, userRole } = req.body;
     const uploadedFiles = [];
 
     for (const file of req.files) {
-      const fileDoc = new File({
-        originalName: file.originalname,
+      const fileId = crypto.randomUUID();
+      const fileData = {
+        id: fileId,
         filename: file.filename,
+        originalName: file.originalname,
         path: file.path,
         size: file.size,
         mimetype: file.mimetype,
         uploadedBy: req.user.id,
-        uploaderModel: req.user.role === "faculty" ? "Faculty" : "Student",
+        userRole: req.user.role,
         taskId: taskId || null,
-        description: description || "",
-        category
+        studentId: studentId || null,
+        uploadedAt: new Date(),
+        isActive: true,
+        downloadCount: 0,
+        versions: []
+      };
+
+      // Store file metadata (in production, save to database)
+      fileStore[fileId] = fileData;
+      
+      uploadedFiles.push({
+        id: fileId,
+        name: file.originalname,
+        size: file.size,
+        url: `/api/files/${fileId}`,
+        downloadUrl: `/api/files/${fileId}/download`
       });
 
-      await fileDoc.save();
-      uploadedFiles.push({
-        id: fileDoc._id,
-        originalName: fileDoc.originalName,
-        filename: fileDoc.filename,
-        size: fileDoc.size,
-        mimetype: fileDoc.mimetype,
-        uploadedAt: fileDoc.uploadedAt
-      });
+      console.log(`📎 File uploaded: ${file.originalname} (${fileData.size} bytes) by ${req.user.role} ${req.user.id}`);
     }
 
-    console.log(`✅ ${uploadedFiles.length} files uploaded and saved`);
-
-    res.status(201).json({
-      message: `${uploadedFiles.length} files uploaded successfully`,
+    res.json({
       success: true,
+      message: `${uploadedFiles.length} file(s) uploaded successfully`,
       files: uploadedFiles
     });
-  } catch (err) {
-    console.error("❌ Multiple file upload error:", err);
-    
-    // Clean up files if database save failed
-    if (req.files) {
-      req.files.forEach(file => {
-        if (fs.existsSync(file.path)) {
-          try {
-            fs.unlinkSync(file.path);
-            console.log(`🗑️ Cleaned up file: ${file.filename}`);
-          } catch (unlinkError) {
-            console.error(`❌ Failed to cleanup file: ${file.filename}`, unlinkError);
-          }
-        }
-      });
-    }
 
+  } catch (error) {
+    console.error('❌ File upload error:', error);
     res.status(500).json({
-      message: "File upload failed",
-      success: false
+      success: false,
+      message: error.message || 'File upload failed'
     });
   }
 });
 
-// ✅ Get file by ID with enhanced security
-router.get("/:fileId", verifyToken, async (req, res) => {
+// ✅ Get file information
+router.get('/:fileId', verifyToken, async (req, res) => {
   try {
     const { fileId } = req.params;
+    const file = fileStore[fileId];
 
-    const file = await File.findById(fileId)
-      .populate("uploadedBy", "firstName lastName email");
-
-    if (!file) {
+    if (!file || !file.isActive) {
       return res.status(404).json({
-        message: "File not found",
-        success: false
+        success: false,
+        message: 'File not found'
       });
     }
 
-    // Check access permissions
-    const isOwner = file.uploadedBy._id.toString() === req.user.id;
-    const isFaculty = req.user.role === "faculty";
-    
-    if (!isOwner && !isFaculty) {
-      // Check if user has access to the task this file belongs to
-      if (file.taskId) {
-        const Task = require("../models/taskSchema");
-        const task = await Task.findById(file.taskId).populate("team", "members");
-        
-        if (!task || !task.team.members.includes(req.user.id)) {
-          return res.status(403).json({
-            message: "Access denied",
-            success: false
-          });
-        }
-      } else {
-        return res.status(403).json({
-          message: "Access denied",
-          success: false
-        });
+    // Check if user has permission to access this file
+    const hasPermission = (
+      req.user.role === 'faculty' || // Faculty can access all files
+      file.uploadedBy === req.user.id || // User can access their own files
+      file.studentId === req.user.id // Student can access files assigned to them
+    );
+
+    if (!hasPermission) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied'
+      });
+    }
+
+    res.json({
+      success: true,
+      file: {
+        id: file.id,
+        name: file.originalName,
+        size: file.size,
+        mimetype: file.mimetype,
+        uploadedAt: file.uploadedAt,
+        downloadCount: file.downloadCount,
+        uploadedBy: file.uploadedBy,
+        userRole: file.userRole
       }
-    }
+    });
 
-    // ✅ SECURITY: Verify file exists before serving
-    if (!fs.existsSync(file.path)) {
-      console.error(`❌ File not found on disk: ${file.path}`);
+  } catch (error) {
+    console.error('❌ Get file error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve file information'
+    });
+  }
+});
+
+// ✅ Download file
+router.get('/:fileId/download', verifyToken, async (req, res) => {
+  try {
+    const { fileId } = req.params;
+    const file = fileStore[fileId];
+
+    if (!file || !file.isActive) {
       return res.status(404).json({
-        message: "File not found on server",
-        success: false
+        success: false,
+        message: 'File not found'
       });
     }
 
-    // Get file stats
-    const stats = fs.statSync(file.path);
-    
-    // Set appropriate headers
-    res.setHeader('Content-Type', file.mimetype || 'application/octet-stream');
-    res.setHeader('Content-Length', stats.size);
-    
-    // For images, display inline; for documents, download
-    const isImage = file.mimetype && file.mimetype.startsWith('image/');
-    if (isImage) {
-      res.setHeader('Content-Disposition', `inline; filename="${file.originalName}"`);
-    } else {
-      res.setHeader('Content-Disposition', `attachment; filename="${file.originalName}"`);
+    // Check permissions
+    const hasPermission = (
+      req.user.role === 'faculty' ||
+      file.uploadedBy === req.user.id ||
+      file.studentId === req.user.id
+    );
+
+    if (!hasPermission) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied'
+      });
     }
-    
+
+    // Check if file exists on disk
+    if (!fs.existsSync(file.path)) {
+      return res.status(404).json({
+        success: false,
+        message: 'File not found on server'
+      });
+    }
+
+    // Increment download count
+    fileStore[fileId].downloadCount++;
+
+    // Set appropriate headers
+    res.setHeader('Content-Disposition', `attachment; filename="${file.originalName}"`);
+    res.setHeader('Content-Type', file.mimetype);
+    res.setHeader('Content-Length', file.size);
+
     // Stream the file
     const fileStream = fs.createReadStream(file.path);
     fileStream.pipe(res);
 
-    console.log(`📥 File served: ${file.filename} to ${req.user.email}`);
+    console.log(`📥 File downloaded: ${file.originalName} by ${req.user.role} ${req.user.id}`);
 
-  } catch (err) {
-    console.error("❌ File retrieval error:", err);
+  } catch (error) {
+    console.error('❌ File download error:', error);
     res.status(500).json({
-      message: "Failed to retrieve file",
-      success: false
-    });
-  }
-});
-
-// ✅ Get files for a specific task
-router.get("/task/:taskId", verifyToken, async (req, res) => {
-  try {
-    const { taskId } = req.params;
-
-    // Verify user has access to this task
-    const Task = require("../models/taskSchema");
-    const task = await Task.findById(taskId).populate("team", "members");
-    
-    if (!task) {
-      return res.status(404).json({
-        message: "Task not found",
-        success: false
-      });
-    }
-
-    const isTeamMember = task.team.members.includes(req.user.id);
-    const isFaculty = req.user.role === "faculty";
-    
-    if (!isTeamMember && !isFaculty) {
-      return res.status(403).json({
-        message: "Access denied",
-        success: false
-      });
-    }
-
-    const files = await File.find({ taskId })
-      .populate("uploadedBy", "firstName lastName email")
-      .sort({ uploadedAt: -1 });
-
-    // Filter out files that don't exist on disk
-    const existingFiles = files.filter(file => {
-      const exists = fs.existsSync(file.path);
-      if (!exists) {
-        console.warn(`⚠️ File in database but not on disk: ${file.path}`);
-      }
-      return exists;
-    });
-
-    res.status(200).json({
-      success: true,
-      files: existingFiles.map(file => ({
-        id: file._id,
-        originalName: file.originalName,
-        filename: file.filename,
-        size: file.size,
-        mimetype: file.mimetype,
-        uploadedAt: file.uploadedAt,
-        description: file.description,
-        category: file.category,
-        uploadedBy: {
-          name: `${file.uploadedBy.firstName} ${file.uploadedBy.lastName}`,
-          email: file.uploadedBy.email
-        }
-      })),
-      total: existingFiles.length
-    });
-
-  } catch (err) {
-    console.error("❌ Error fetching task files:", err);
-    res.status(500).json({
-      message: "Failed to fetch files",
-      success: false
-    });
-  }
-});
-
-// ✅ Get user's files
-router.get("/user/my-files", verifyToken, async (req, res) => {
-  try {
-    const { category, limit = 20, page = 1 } = req.query;
-    
-    const query = { uploadedBy: req.user.id };
-    if (category && category !== 'all') {
-      query.category = category;
-    }
-
-    const files = await File.find(query)
-      .populate("uploadedBy", "firstName lastName email")
-      .sort({ uploadedAt: -1 })
-      .limit(parseInt(limit))
-      .skip((parseInt(page) - 1) * parseInt(limit));
-
-    const total = await File.countDocuments(query);
-
-    // Filter out files that don't exist on disk
-    const existingFiles = files.filter(file => {
-      const exists = fs.existsSync(file.path);
-      if (!exists) {
-        console.warn(`⚠️ File in database but not on disk: ${file.path}`);
-      }
-      return exists;
-    });
-
-    res.status(200).json({
-      success: true,
-      files: existingFiles.map(file => ({
-        id: file._id,
-        originalName: file.originalName,
-        filename: file.filename,
-        size: file.size,
-        mimetype: file.mimetype,
-        uploadedAt: file.uploadedAt,
-        description: file.description,
-        category: file.category,
-        downloadCount: file.downloadCount || 0
-      })),
-      pagination: {
-        total,
-        page: parseInt(page),
-        limit: parseInt(limit),
-        pages: Math.ceil(total / parseInt(limit))
-      }
-    });
-  } catch (err) {
-    console.error("❌ Error fetching user files:", err);
-    res.status(500).json({
-      message: "Failed to fetch files",
-      success: false
+      success: false,
+      message: 'Failed to download file'
     });
   }
 });
 
 // ✅ Delete file
-router.delete("/:fileId", verifyToken, async (req, res) => {
+router.delete('/:fileId', verifyToken, async (req, res) => {
   try {
     const { fileId } = req.params;
+    const file = fileStore[fileId];
 
-    const file = await File.findById(fileId);
-    if (!file) {
+    if (!file || !file.isActive) {
       return res.status(404).json({
-        message: "File not found",
-        success: false
+        success: false,
+        message: 'File not found'
       });
     }
 
-    // Check permissions - only owner or faculty can delete
-    const isOwner = file.uploadedBy.toString() === req.user.id;
-    const isFaculty = req.user.role === "faculty";
-    
-    if (!isOwner && !isFaculty) {
+    // Check permissions (only file owner or faculty can delete)
+    const canDelete = (
+      req.user.role === 'faculty' ||
+      file.uploadedBy === req.user.id
+    );
+
+    if (!canDelete) {
       return res.status(403).json({
-        message: "Access denied. Only file owner or faculty can delete files.",
-        success: false
+        success: false,
+        message: 'Access denied'
       });
     }
 
-    // Delete file from disk
-    if (fs.existsSync(file.path)) {
-      try {
-        fs.unlinkSync(file.path);
-        console.log(`🗑️ File deleted from disk: ${file.path}`);
-      } catch (unlinkError) {
-        console.error(`❌ Failed to delete file from disk: ${file.path}`, unlinkError);
-        // Continue to delete from database even if disk deletion fails
-      }
-    } else {
-      console.warn(`⚠️ File not found on disk during deletion: ${file.path}`);
-    }
+    // Mark file as inactive (soft delete)
+    fileStore[fileId].isActive = false;
 
-    // Delete from database
-    await File.findByIdAndDelete(fileId);
+    // Optionally delete from disk (uncomment for hard delete)
+    // if (fs.existsSync(file.path)) {
+    //   fs.unlinkSync(file.path);
+    // }
 
-    console.log(`✅ File deleted: ${file.filename} by ${req.user.email}`);
-
-    res.status(200).json({
-      message: "File deleted successfully",
-      success: true
+    res.json({
+      success: true,
+      message: 'File deleted successfully'
     });
-  } catch (err) {
-    console.error("❌ Error deleting file:", err);
+
+    console.log(`🗑️ File deleted: ${file.originalName} by ${req.user.role} ${req.user.id}`);
+
+  } catch (error) {
+    console.error('❌ File delete error:', error);
     res.status(500).json({
-      message: "Failed to delete file",
-      success: false
+      success: false,
+      message: 'Failed to delete file'
     });
   }
 });
 
-// ✅ Update file metadata
-router.put("/:fileId", verifyToken, async (req, res) => {
+// ✅ Get files for a specific task
+router.get('/task/:taskId', verifyToken, async (req, res) => {
+  try {
+    const { taskId } = req.params;
+
+    // Filter files by task ID
+    const taskFiles = Object.values(fileStore).filter(file => 
+      file.taskId === taskId && file.isActive
+    );
+
+    // Check permissions based on user role
+    let filteredFiles = taskFiles;
+    
+    if (req.user.role === 'student') {
+      // Students can only see their own files for this task
+      filteredFiles = taskFiles.filter(file => 
+        file.uploadedBy === req.user.id || file.studentId === req.user.id
+      );
+    }
+    // Faculty can see all files for the task
+
+    const filesResponse = filteredFiles.map(file => ({
+      id: file.id,
+      name: file.originalName,
+      size: file.size,
+      mimetype: file.mimetype,
+      uploadedAt: file.uploadedAt,
+      uploadedBy: file.uploadedBy,
+      userRole: file.userRole,
+      downloadCount: file.downloadCount
+    }));
+
+    res.json({
+      success: true,
+      files: filesResponse,
+      count: filesResponse.length
+    });
+
+  } catch (error) {
+    console.error('❌ Get task files error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve task files'
+    });
+  }
+});
+
+// ✅ Get user's uploaded files
+router.get('/user/my-files', verifyToken, async (req, res) => {
+  try {
+    const userFiles = Object.values(fileStore).filter(file => 
+      file.uploadedBy === req.user.id && file.isActive
+    );
+
+    const filesResponse = userFiles.map(file => ({
+      id: file.id,
+      name: file.originalName,
+      size: file.size,
+      mimetype: file.mimetype,
+      uploadedAt: file.uploadedAt,
+      taskId: file.taskId,
+      downloadCount: file.downloadCount
+    }));
+
+    res.json({
+      success: true,
+      files: filesResponse,
+      count: filesResponse.length
+    });
+
+  } catch (error) {
+    console.error('❌ Get user files error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve user files'
+    });
+  }
+});
+
+// ✅ Update file metadata (rename, etc.)
+router.patch('/:fileId', verifyToken, async (req, res) => {
   try {
     const { fileId } = req.params;
-    const { description, category } = req.body;
+    const { newName, description } = req.body;
+    const file = fileStore[fileId];
 
-    const file = await File.findById(fileId);
-    if (!file) {
+    if (!file || !file.isActive) {
       return res.status(404).json({
-        message: "File not found",
-        success: false
+        success: false,
+        message: 'File not found'
       });
     }
 
-    // Check permissions - only owner can update
-    if (file.uploadedBy.toString() !== req.user.id) {
+    // Check permissions
+    const canEdit = (
+      req.user.role === 'faculty' ||
+      file.uploadedBy === req.user.id
+    );
+
+    if (!canEdit) {
       return res.status(403).json({
-        message: "Access denied. Only file owner can update metadata.",
-        success: false
+        success: false,
+        message: 'Access denied'
       });
     }
 
     // Update metadata
+    if (newName) {
+      // Validate new name
+      if (newName.trim().length === 0 || newName.length > 255) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid file name'
+        });
+      }
+      fileStore[fileId].originalName = newName.trim();
+    }
+
     if (description !== undefined) {
-      file.description = description;
-    }
-    if (category !== undefined) {
-      file.category = category;
+      fileStore[fileId].description = description;
     }
 
-    await file.save();
-
-    console.log(`✅ File metadata updated: ${file.filename} by ${req.user.email}`);
-
-    res.status(200).json({
-      message: "File metadata updated successfully",
+    res.json({
       success: true,
+      message: 'File updated successfully',
       file: {
-        id: file._id,
-        originalName: file.originalName,
-        description: file.description,
-        category: file.category
+        id: file.id,
+        name: file.originalName,
+        description: file.description
       }
     });
-  } catch (err) {
-    console.error("❌ Error updating file metadata:", err);
+
+  } catch (error) {
+    console.error('❌ Update file error:', error);
     res.status(500).json({
-      message: "Failed to update file metadata",
-      success: false
+      success: false,
+      message: 'Failed to update file'
     });
   }
 });
 
 // ✅ Get file statistics
-router.get("/stats/overview", verifyToken, async (req, res) => {
+router.get('/stats/overview', verifyToken, async (req, res) => {
   try {
-    const userId = req.user.id;
-    const userRole = req.user.role;
-
-    let query = {};
-    if (userRole !== 'faculty') {
-      query.uploadedBy = userId; // Students can only see their own stats
+    const activeFiles = Object.values(fileStore).filter(file => file.isActive);
+    
+    let userFiles = activeFiles;
+    if (req.user.role === 'student') {
+      userFiles = activeFiles.filter(file => 
+        file.uploadedBy === req.user.id || file.studentId === req.user.id
+      );
     }
 
-    const totalFiles = await File.countDocuments(query);
-    const totalSize = await File.aggregate([
-      { $match: query },
-      { $group: { _id: null, totalSize: { $sum: "$size" } } }
-    ]);
+    const stats = {
+      totalFiles: userFiles.length,
+      totalSize: userFiles.reduce((sum, file) => sum + file.size, 0),
+      totalDownloads: userFiles.reduce((sum, file) => sum + file.downloadCount, 0),
+      fileTypes: {},
+      recentUploads: userFiles
+        .sort((a, b) => new Date(b.uploadedAt) - new Date(a.uploadedAt))
+        .slice(0, 5)
+        .map(file => ({
+          id: file.id,
+          name: file.originalName,
+          size: file.size,
+          uploadedAt: file.uploadedAt
+        }))
+    };
 
-    const filesByCategory = await File.aggregate([
-      { $match: query },
-      { $group: { _id: "$category", count: { $sum: 1 } } }
-    ]);
-
-    const filesByType = await File.aggregate([
-      { $match: query },
-      { $group: { _id: "$mimetype", count: { $sum: 1 } } }
-    ]);
-
-    res.status(200).json({
-      success: true,
-      stats: {
-        totalFiles,
-        totalSize: totalSize[0]?.totalSize || 0,
-        filesByCategory,
-        filesByType: filesByType.slice(0, 10) // Top 10 file types
-      }
+    // Calculate file type distribution
+    userFiles.forEach(file => {
+      const ext = path.extname(file.originalName).toLowerCase().substring(1);
+      stats.fileTypes[ext] = (stats.fileTypes[ext] || 0) + 1;
     });
 
-  } catch (err) {
-    console.error("❌ Error fetching file statistics:", err);
+    res.json({
+      success: true,
+      stats
+    });
+
+  } catch (error) {
+    console.error('❌ Get file stats error:', error);
     res.status(500).json({
-      message: "Failed to fetch file statistics",
-      success: false
+      success: false,
+      message: 'Failed to retrieve file statistics'
     });
   }
 });
+
+// ✅ Search files
+router.get('/search/:query', verifyToken, async (req, res) => {
+  try {
+    const { query } = req.params;
+    const { type, taskId } = req.query;
+
+    if (!query || query.trim().length < 2) {
+      return res.status(400).json({
+        success: false,
+        message: 'Search query must be at least 2 characters'
+      });
+    }
+
+    let searchFiles = Object.values(fileStore).filter(file => file.isActive);
+
+    // Filter by user permissions
+    if (req.user.role === 'student') {
+      searchFiles = searchFiles.filter(file => 
+        file.uploadedBy === req.user.id || file.studentId === req.user.id
+      );
+    }
+
+    // Apply search filters
+    const searchTerm = query.toLowerCase();
+    searchFiles = searchFiles.filter(file => 
+      file.originalName.toLowerCase().includes(searchTerm)
+    );
+
+    // Filter by file type if specified
+    if (type && type !== 'all') {
+      searchFiles = searchFiles.filter(file => {
+        const ext = path.extname(file.originalName).toLowerCase();
+        return ext.includes(type.toLowerCase());
+      });
+    }
+
+    // Filter by task if specified
+    if (taskId) {
+      searchFiles = searchFiles.filter(file => file.taskId === taskId);
+    }
+
+    const results = searchFiles.map(file => ({
+      id: file.id,
+      name: file.originalName,
+      size: file.size,
+      mimetype: file.mimetype,
+      uploadedAt: file.uploadedAt,
+      taskId: file.taskId,
+      relevance: file.originalName.toLowerCase().indexOf(searchTerm)
+    })).sort((a, b) => a.relevance - b.relevance); // Sort by relevance
+
+    res.json({
+      success: true,
+      results,
+      count: results.length,
+      query: query
+    });
+
+  } catch (error) {
+    console.error('❌ File search error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'File search failed'
+    });
+  }
+});
+
+// ✅ Bulk operations
+router.post('/bulk-action', verifyToken, async (req, res) => {
+  try {
+    const { action, fileIds } = req.body;
+
+    if (!Array.isArray(fileIds) || fileIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'No files specified'
+      });
+    }
+
+    const results = {
+      success: [],
+      failed: []
+    };
+
+    for (const fileId of fileIds) {
+      const file = fileStore[fileId];
+      
+      if (!file || !file.isActive) {
+        results.failed.push({ fileId, reason: 'File not found' });
+        continue;
+      }
+
+      // Check permissions
+      const hasPermission = (
+        req.user.role === 'faculty' ||
+        file.uploadedBy === req.user.id
+      );
+
+      if (!hasPermission) {
+        results.failed.push({ fileId, reason: 'Access denied' });
+        continue;
+      }
+
+      // Perform action
+      switch (action) {
+        case 'delete':
+          fileStore[fileId].isActive = false;
+          results.success.push({ fileId, action: 'deleted' });
+          break;
+        
+        default:
+          results.failed.push({ fileId, reason: 'Unknown action' });
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `Bulk ${action} completed`,
+      results
+    });
+
+  } catch (error) {
+    console.error('❌ Bulk action error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Bulk action failed'
+    });
+  }
+});
+
+// Error handling middleware for multer
+router.use((error, req, res, next) => {
+  if (error instanceof multer.MulterError) {
+    if (error.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({
+        success: false,
+        message: 'File size too large (max 50MB)'
+      });
+    }
+    if (error.code === 'LIMIT_FILE_COUNT') {
+      return res.status(400).json({
+        success: false,
+        message: 'Too many files (max 10 files)'
+      });
+    }
+  }
+  
+  res.status(500).json({
+    success: false,
+    message: error.message || 'File operation failed'
+  });
+});
+
+console.log('📎 File upload routes initialized');
 
 module.exports = router;

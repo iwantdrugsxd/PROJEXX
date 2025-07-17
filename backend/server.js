@@ -413,7 +413,15 @@ app.use("/api/teamRoutes", teamRoutes);
 app.use("/api/tasks", taskRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use("/api/analytics", analyticsRoutes);
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  next();
+});
 
+// File type validation (already included in fileRoutes.js):
+const dangerousExts = ['.exe', '.bat', '.cmd', '.com', '.pif', '.scr', '.vbs', '.js'];
 // ✅ NEW: Search endpoint for dashboard
 app.get("/api/search", verifyToken, async (req, res) => {
   try {

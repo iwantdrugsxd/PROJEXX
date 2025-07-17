@@ -654,61 +654,89 @@ function NewChatModal({ userRole, onClose, onChatCreated }) {
     }
   };
 
-  const loadTeams = async () => {
-    try {
-      const response = await fetch(`${API_BASE}/teamRoutes/faculty-teams`, {
-        credentials: 'include'
-      });
-      
-      if (response.ok) {
+  const loadTeamsAlternative = useCallback(async () => {
+  setLoadingTeams(true);
+  setErrors(prev => ({ ...prev, teams: null }));
+  
+  try {
+    // Try multiple endpoints until one works
+    const endpoints = [
+      `${API_BASE}/teamRoutes/server/${serverId}/teams`,
+      `${API_BASE}/tasks/server/${serverId}/teams`,
+      `${API_BASE}/teamRoutes/faculty-teams`
+    ];
+    
+    let teamsData = [];
+    let lastError = null;
+    
+    for (const endpoint of endpoints) {
+      try {
+        console.log(`🔍 Trying endpoint: ${endpoint}`);
+        const response = await fetch(endpoint, {
+          credentials: 'include'
+        });
+        
         const data = await response.json();
-        setTeams(data.teams || []);
+        console.log(`📡 Response from ${endpoint}:`, data);
+        
+        if (response.ok && data.success) {
+          // Handle different response formats
+          if (data.teams) {
+            teamsData = data.teams;
+          } else if (Array.isArray(data)) {
+            teamsData = data;
+          }
+          
+          // Filter teams for current server if needed
+          if (endpoint.includes('faculty-teams')) {
+            // Get server code first
+            const serverResponse = await fetch(`${API_BASE}/projectServers/${serverId}`, {
+              credentials: 'include'
+            });
+            const serverData = await serverResponse.json();
+            if (serverData.success && serverData.server) {
+              teamsData = teamsData.filter(team => 
+                team.projectServer === serverData.server.code
+              );
+            }
+          }
+          
+          break; // Success, exit loop
+        } else {
+          lastError = data.message || 'Unknown error';
+        }
+      } catch (err) {
+        lastError = err.message;
+        console.log(`❌ Endpoint ${endpoint} failed:`, err.message);
       }
-    } catch (error) {
-      console.error('Failed to load teams:', error);
-    }
-  };
-
-  const handleCreateChat = async () => {
-    if (chatType === 'direct' && selectedUsers.length !== 1) {
-      alert('Please select exactly one user for direct chat');
-      return;
     }
     
-    if (chatType === 'group' && (selectedUsers.length < 2 || !groupName.trim())) {
-      alert('Please select at least 2 users and enter a group name');
-      return;
+    setTeams(teamsData);
+    
+    if (teamsData.length === 0) {
+      setErrors(prev => ({ 
+        ...prev, 
+        teams: 'No teams found in this server. Students need to create teams first.'
+      }));
     }
-
-    setLoading(true);
-
-    try {
-      const response = await fetch(`${API_BASE}/messaging/chats`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          type: chatType,
-          participants: selectedUsers.map(u => u._id),
-          name: chatType === 'group' ? groupName.trim() : undefined
-        })
-      });
-
-      const data = await response.json();
-      
-      if (data.success) {
-        onChatCreated(data.chat);
-      } else {
-        alert(data.message || 'Failed to create chat');
-      }
-    } catch (error) {
-      console.error('Failed to create chat:', error);
-      alert('Failed to create chat');
-    } finally {
-      setLoading(false);
+    
+    if (teamsData.length === 0 && lastError) {
+      setErrors(prev => ({ 
+        ...prev, 
+        teams: lastError
+      }));
     }
-  };
-
+    
+  } catch (error) {
+    console.error('❌ All endpoints failed:', error);
+    setErrors(prev => ({ 
+      ...prev, 
+      teams: 'Unable to load teams. Please try again later.' 
+    }));
+  } finally {
+    setLoadingTeams(false);
+  }
+}, [serverId, API_BASE]);
   const toggleUserSelection = (user) => {
     setSelectedUsers(prev => {
       const isSelected = prev.some(u => u._id === user._id);

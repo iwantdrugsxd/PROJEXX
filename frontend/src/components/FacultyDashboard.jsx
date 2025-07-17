@@ -37,13 +37,15 @@ import {
   UserCheck,
   Timer,
   Wifi,
-  WifiOff
+  WifiOff,
+  Upload,        // ADD THIS
+  MoreVertical   // ADD THIS
 } from 'lucide-react';
-
 // Import task management components
 import TaskCreator from './TaskManagement/TaskCreator';
-import FacultyTaskList from './TaskManagement/FacultyTaskList';
-
+import FacultyTaskList from './FacultyTaskList'; 
+import ComprehensiveAnalyticsDashboard from './Analytics/ComprehensiveAnalyticsDashboard';
+import FileUploadSystem from './FileSystem/FileUploadSystem';
 // Utility Functions
 const dateUtils = {
   getRelativeTime: (date) => {
@@ -406,16 +408,75 @@ const EnhancedFacultyDashboard = ({ user, onLogout }) => {
   const handleRefresh = () => {
     fetchDashboardData();
   };
+const EnhancedServerCard = ({ server, isSelected, onClick }) => {
+    const stats = server.stats || {};
+    
+    return (
+      <div 
+        onClick={onClick}
+        className={`p-6 rounded-xl border-2 cursor-pointer transition-all duration-200 ${
+          isSelected 
+            ? 'border-purple-500 bg-purple-50' 
+            : 'border-gray-200 hover:border-purple-300 hover:bg-gray-50'
+        }`}
+      >
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900">{server.title}</h3>
+            <p className="text-sm text-gray-600">{server.description}</p>
+          </div>
+          <div className="text-right">
+            <span className="text-xs bg-purple-100 text-purple-600 px-2 py-1 rounded-full">
+              {server.code}
+            </span>
+          </div>
+        </div>
+        
+        {/* Quick Stats Preview */}
+        <div className="grid grid-cols-3 gap-4">
+          <div className="text-center">
+            <div className="text-2xl font-bold text-blue-600">{stats.teamsCount || 0}</div>
+            <div className="text-xs text-gray-500">Teams</div>
+          </div>
+          <div className="text-center">
+            <div className="text-2xl font-bold text-green-600">{stats.tasksCount || 0}</div>
+            <div className="text-xs text-gray-500">Tasks</div>
+          </div>
+          <div className="text-center">
+            <div className="text-2xl font-bold text-purple-600">{stats.studentsCount || 0}</div>
+            <div className="text-xs text-gray-500">Students</div>
+          </div>
+        </div>
+        
+        {/* Progress Indicator */}
+        <div className="mt-4">
+          <div className="flex justify-between text-xs text-gray-600 mb-1">
+            <span>Project Progress</span>
+            <span>{Math.round((stats.completedTasks || 0) / Math.max(stats.tasksCount || 1, 1) * 100)}%</span>
+          </div>
+          <div className="w-full bg-gray-200 rounded-full h-2">
+            <div 
+              className="bg-purple-600 h-2 rounded-full transition-all duration-300"
+              style={{ 
+                width: `${Math.round((stats.completedTasks || 0) / Math.max(stats.tasksCount || 1, 1) * 100)}%` 
+              }}
+            ></div>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
-  const tabs = [
-    { id: 'overview', label: 'Overview', icon: Home },
-    { id: 'servers', label: 'Project Servers', icon: Server },
-    { id: 'tasks', label: 'Task Management', icon: FileText },
-    { id: 'calendar', label: 'Calendar', icon: Calendar },
-    { id: 'analytics', label: 'Analytics', icon: BarChart3 },
-    { id: 'profile', label: 'Profile', icon: User }
-  ];
-
+  
+const tabs = [
+  { id: 'overview', label: 'Overview', icon: Home },
+  { id: 'analytics', label: 'Analytics Dashboard', icon: BarChart3 }, // MOVED UP
+  { id: 'servers', label: 'Project Servers', icon: Server },
+  { id: 'tasks', label: 'Task Management', icon: FileText },
+  { id: 'files', label: 'File Manager', icon: Upload }, // NEW TAB
+  { id: 'calendar', label: 'Calendar', icon: Calendar },
+  { id: 'profile', label: 'Profile', icon: User }
+];
   // Enhanced Overview Tab Component
   const OverviewTab = () => (
     <div className="space-y-6">
@@ -724,175 +785,176 @@ const EnhancedFacultyDashboard = ({ user, onLogout }) => {
   );
 
   // Enhanced Servers Tab Component
-  const ServersTab = () => (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Project Servers</h1>
-          <p className="text-gray-600">Manage your project servers and course sections</p>
-        </div>
-        <div className="flex items-center space-x-3">
-          <button
-            onClick={handleRefresh}
-            disabled={refreshing}
-            className="flex items-center space-x-2 px-4 py-2 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
-          >
-            <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-            <span>Refresh</span>
-          </button>
-          <button
-            onClick={() => setShowServerModal(true)}
-            className="flex items-center space-x-2 px-6 py-3 bg-purple-600 text-white rounded-xl hover:bg-purple-700 transition-colors duration-200 shadow-lg hover:shadow-xl"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Create Server</span>
-          </button>
-        </div>
+// REPLACE YOUR ENTIRE ServersTab COMPONENT WITH THIS:
+
+const ServersTab = () => (
+  <div className="space-y-6">
+    <div className="flex items-center justify-between">
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900">Project Servers</h1>
+        <p className="text-gray-600">Manage your project servers and course sections</p>
       </div>
+      <div className="flex items-center space-x-3">
+        <button
+          onClick={handleRefresh}
+          disabled={refreshing}
+          className="flex items-center space-x-2 px-4 py-2 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+        >
+          <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+          <span>Refresh</span>
+        </button>
+        <button
+          onClick={() => setShowServerModal(true)}
+          className="flex items-center space-x-2 px-6 py-3 bg-purple-600 text-white rounded-xl hover:bg-purple-700 transition-colors duration-200 shadow-lg hover:shadow-xl"
+        >
+          <Plus className="w-4 h-4" />
+          <span>Create Server</span>
+        </button>
+      </div>
+    </div>
 
-      {loading ? (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {[...Array(4)].map((_, i) => (
-            <div key={i} className="bg-white rounded-xl shadow-sm border p-6 animate-pulse">
-              <div className="h-6 bg-gray-200 rounded w-3/4 mb-4"></div>
-              <div className="h-4 bg-gray-200 rounded w-full mb-2"></div>
-              <div className="h-4 bg-gray-200 rounded w-2/3"></div>
-            </div>
-          ))}
-        </div>
-      ) : servers.length === 0 ? (
-        <div className="bg-white rounded-xl shadow-sm border p-12 text-center">
-          <Server className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-600 mb-2">No servers created yet</h3>
-          <p className="text-gray-500 mb-6">Create your first project server to get started</p>
-          <button
-            onClick={() => setShowServerModal(true)}
-            className="inline-flex items-center space-x-2 px-6 py-3 bg-purple-600 text-white rounded-xl hover:bg-purple-700 transition-colors duration-200"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Create Your First Server</span>
-          </button>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {servers.map((server) => (
-            <div key={server._id} className="bg-white rounded-xl shadow-sm border border-gray-100 hover:shadow-lg transition-all duration-200">
-              <div className="p-6">
-                {/* Server Header */}
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex-1">
-                    <div className="flex items-center space-x-2 mb-2">
-                      <h3 className="text-xl font-semibold text-gray-900">{server.title}</h3>
-                      <span className="px-2 py-1 bg-purple-100 text-purple-800 text-xs font-medium rounded-full">
-                        {server.code}
-                      </span>
-                      {refreshing && (
-                        <RefreshCw className="w-4 h-4 text-gray-400 animate-spin" />
-                      )}
-                    </div>
-                    <p className="text-gray-600 text-sm line-clamp-2">{server.description}</p>
+    {loading ? (
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {[...Array(4)].map((_, i) => (
+          <div key={i} className="bg-white rounded-xl shadow-sm border p-6 animate-pulse">
+            <div className="h-6 bg-gray-200 rounded w-3/4 mb-4"></div>
+            <div className="h-4 bg-gray-200 rounded w-full mb-2"></div>
+            <div className="h-4 bg-gray-200 rounded w-2/3"></div>
+          </div>
+        ))}
+      </div>
+    ) : servers.length === 0 ? (
+      <div className="bg-white rounded-xl shadow-sm border p-12 text-center">
+        <Server className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+        <h3 className="text-lg font-medium text-gray-600 mb-2">No servers created yet</h3>
+        <p className="text-gray-500 mb-6">Create your first project server to get started</p>
+        <button
+          onClick={() => setShowServerModal(true)}
+          className="inline-flex items-center space-x-2 px-6 py-3 bg-purple-600 text-white rounded-xl hover:bg-purple-700 transition-colors duration-200"
+        >
+          <Plus className="w-4 h-4" />
+          <span>Create Your First Server</span>
+        </button>
+      </div>
+    ) : (
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {servers.map((server) => (
+          <div key={server._id} className="bg-white rounded-xl shadow-sm border border-gray-100 hover:shadow-lg transition-all duration-200">
+            <div className="p-6">
+              {/* Server Header */}
+              <div className="flex items-start justify-between mb-4">
+                <div className="flex-1">
+                  <div className="flex items-center space-x-2 mb-2">
+                    <h3 className="text-xl font-semibold text-gray-900">{server.title}</h3>
+                    <span className="px-2 py-1 bg-purple-100 text-purple-800 text-xs font-medium rounded-full">
+                      {server.code}
+                    </span>
+                    {refreshing && (
+                      <RefreshCw className="w-4 h-4 text-gray-400 animate-spin" />
+                    )}
                   </div>
-                  <div className="flex space-x-2">
-                    <button
-                      onClick={() => copyToClipboard(server.code)}
-                      className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-                      title="Copy server code"
-                    >
-                      {copiedCode === server.code ? (
-                        <CheckCircle className="w-4 h-4 text-green-500" />
-                      ) : (
-                        <Copy className="w-4 h-4" />
-                      )}
-                    </button>
-                    <button
-                      onClick={() => deleteServer(server._id)}
-                      className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
+                  <p className="text-gray-600 text-sm line-clamp-2">{server.description}</p>
                 </div>
-
-                {/* Server Stats */}
-                <div className="grid grid-cols-3 gap-4 mb-4">
-                  <div className="text-center">
-                    <p className="text-2xl font-bold text-purple-600">{server.stats?.teamsCount || 0}</p>
-                    <p className="text-xs text-gray-500">Teams</p>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-2xl font-bold text-blue-600">{server.stats?.studentsCount || 0}</p>
-                    <p className="text-xs text-gray-500">Students</p>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-2xl font-bold text-green-600">{server.stats?.tasksCount || 0}</p>
-                    <p className="text-xs text-gray-500">Tasks</p>
-                  </div>
-                </div>
-
-                {/* Teams Section */}
-                <div className="border-t border-gray-100 pt-4">
+                <div className="flex space-x-2">
                   <button
-                    onClick={() => toggleServerExpansion(server._id)}
-                    className="flex items-center justify-between w-full text-left"
+                    onClick={() => copyToClipboard(server.code)}
+                    className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                    title="Copy server code"
                   >
-                    <span className="font-medium text-gray-900">Teams ({server.teams?.length || 0})</span>
-                    {expandedServers.has(server._id) ? (
-                      <ChevronDown className="w-4 h-4 text-gray-500" />
+                    {copiedCode === server.code ? (
+                      <CheckCircle className="w-4 h-4 text-green-500" />
                     ) : (
-                      <ChevronRight className="w-4 h-4 text-gray-500" />
+                      <Copy className="w-4 h-4" />
                     )}
                   </button>
+                  <button
+                    onClick={() => deleteServer(server._id)}
+                    className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
 
-                  {expandedServers.has(server._id) && (
-                    <div className="mt-3 space-y-2">
-                      {server.teams && server.teams.length > 0 ? (
-                        server.teams.map((team) => (
-                          <div key={team._id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                            <div>
-                              <p className="font-medium text-gray-900">{team.name}</p>
-                              <div className="flex items-center space-x-2 text-sm text-gray-500">
-                                <span>{team.members?.length || 0} members</span>
-                                {team.creator && (
-                                  <span>• Created by {team.creator.firstName} {team.creator.lastName}</span>
-                                )}
-                              </div>
-                            </div>
-                            <div className="text-xs text-gray-400">
-                              {dateUtils.getRelativeTime(team.createdAt)}
+              {/* Server Stats */}
+              <div className="grid grid-cols-3 gap-4 mb-4">
+                <div className="text-center">
+                  <p className="text-2xl font-bold text-purple-600">{server.stats?.teamsCount || 0}</p>
+                  <p className="text-xs text-gray-500">Teams</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-2xl font-bold text-blue-600">{server.stats?.studentsCount || 0}</p>
+                  <p className="text-xs text-gray-500">Students</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-2xl font-bold text-green-600">{server.stats?.tasksCount || 0}</p>
+                  <p className="text-xs text-gray-500">Tasks</p>
+                </div>
+              </div>
+
+              {/* Teams Section */}
+              <div className="border-t border-gray-100 pt-4">
+                <button
+                  onClick={() => toggleServerExpansion(server._id)}
+                  className="flex items-center justify-between w-full text-left"
+                >
+                  <span className="font-medium text-gray-900">Teams ({server.teams?.length || 0})</span>
+                  {expandedServers.has(server._id) ? (
+                    <ChevronDown className="w-4 h-4 text-gray-500" />
+                  ) : (
+                    <ChevronRight className="w-4 h-4 text-gray-500" />
+                  )}
+                </button>
+
+                {expandedServers.has(server._id) && (
+                  <div className="mt-3 space-y-2">
+                    {server.teams && server.teams.length > 0 ? (
+                      server.teams.map((team) => (
+                        <div key={team._id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                          <div>
+                            <p className="font-medium text-gray-900">{team.name}</p>
+                            <div className="flex items-center space-x-2 text-sm text-gray-500">
+                              <span>{team.members?.length || 0} members</span>
+                              {team.creator && (
+                                <span>• Created by {team.creator.firstName} {team.creator.lastName}</span>
+                              )}
                             </div>
                           </div>
-                        ))
-                      ) : (
-                        <div className="text-center py-4 text-gray-500 text-sm">
-                          No teams created yet. Students can join this server using code: <strong>{server.code}</strong>
+                          <div className="text-xs text-gray-400">
+                            {dateUtils.getRelativeTime(team.createdAt)}
+                          </div>
                         </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {/* Action Buttons */}
-                <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-100">
-                  <button
-                    onClick={() => setSelectedServer(server)}
-                    className="flex items-center space-x-2 px-4 py-2 bg-purple-50 hover:bg-purple-100 text-purple-600 rounded-lg transition-colors"
-                  >
-                    <Eye className="w-4 h-4" />
-                    <span className="text-sm">Manage</span>
-                  </button>
-
-                  <div className="text-xs text-gray-500">
-                    Created {dateUtils.getRelativeTime(server.createdAt)}
+                      ))
+                    ) : (
+                      <div className="text-center py-4 text-gray-500 text-sm">
+                        No teams created yet. Students can join this server using code: <strong>{server.code}</strong>
+                      </div>
+                    )}
                   </div>
+                )}
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-100">
+                <button
+                  onClick={() => setSelectedServer(server)}
+                  className="flex items-center space-x-2 px-4 py-2 bg-purple-50 hover:bg-purple-100 text-purple-600 rounded-lg transition-colors"
+                >
+                  <Eye className="w-4 h-4" />
+                  <span className="text-sm">Manage</span>
+                </button>
+
+                <div className="text-xs text-gray-500">
+                  Created {dateUtils.getRelativeTime(server.createdAt)}
                 </div>
               </div>
             </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-
+          </div>
+        ))}
+      </div>
+    )}
+  </div>
+);
   // Enhanced Tasks Tab Component
   const TasksTab = () => {
     if (!selectedServer) {
@@ -1207,6 +1269,8 @@ const EnhancedFacultyDashboard = ({ user, onLogout }) => {
     </div>
   );
 
+
+
   // Profile Tab Component
   const ProfileTab = () => (
     <div className="space-y-6">
@@ -1432,7 +1496,66 @@ const EnhancedFacultyDashboard = ({ user, onLogout }) => {
       </div>
     );
   };
+// Quick Action Components
+  const QuickActionButtons = ({ selectedServer, onAction }) => {
+    if (!selectedServer) return null;
 
+    return (
+      <div className="fixed bottom-6 right-6 flex flex-col space-y-3 z-40">
+        <button
+          onClick={() => onAction('createTask')}
+          className="w-14 h-14 bg-purple-600 text-white rounded-full shadow-lg hover:bg-purple-700 transition-all duration-200 flex items-center justify-center"
+          title="Create New Task"
+        >
+          <Plus className="w-6 h-6" />
+        </button>
+        
+        <button
+          onClick={() => onAction('uploadFile')}
+          className="w-12 h-12 bg-blue-600 text-white rounded-full shadow-lg hover:bg-blue-700 transition-all duration-200 flex items-center justify-center"
+          title="Upload File"
+        >
+          <Upload className="w-5 h-5" />
+        </button>
+        
+        <button
+          onClick={() => onAction('exportData')}
+          className="w-12 h-12 bg-green-600 text-white rounded-full shadow-lg hover:bg-green-700 transition-all duration-200 flex items-center justify-center"
+          title="Export Analytics"
+        >
+          <Download className="w-5 h-5" />
+        </button>
+      </div>
+    );
+  };
+
+  const exportAnalyticsData = async () => {
+    if (!selectedServer) return;
+    
+    try {
+      const response = await fetch(`${API_BASE}/analytics/export/${selectedServer._id}`, {
+        credentials: 'include'
+      });
+      
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = url;
+        a.download = `${selectedServer.title}_analytics_${new Date().toISOString().split('T')[0]}.json`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+      }
+    } catch (error) {
+      console.error('Export failed:', error);
+      alert('Failed to export analytics data');
+    }
+  };
+
+  
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -1540,15 +1663,135 @@ const EnhancedFacultyDashboard = ({ user, onLogout }) => {
       </nav>
 
       {/* Main Content */}
+  {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {activeTab === 'overview' && <OverviewTab />}
+        {activeTab === 'analytics' && selectedServer && (
+          <ComprehensiveAnalyticsDashboard 
+            selectedServer={selectedServer}
+            user={user}
+          />
+        )}
+        {activeTab === 'analytics' && !selectedServer && <AnalyticsTab />}
         {activeTab === 'servers' && <ServersTab />}
         {activeTab === 'tasks' && <TasksTab />}
+        {activeTab === 'files' && (
+          <div className="space-y-6">
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">File Manager</h1>
+              <p className="text-gray-600">
+                {selectedServer 
+                  ? `Manage files for ${selectedServer.title}` 
+                  : 'Select a server to manage files'
+                }
+              </p>
+            </div>
+
+            {selectedServer ? (
+              <div className="space-y-8">
+                {/* File Upload Section */}
+                <div className="bg-white rounded-xl shadow-sm border p-6">
+                  <div className="flex items-center justify-between mb-6">
+                    <div>
+                      <h2 className="text-lg font-semibold text-gray-900">Upload Files</h2>
+                      <p className="text-gray-600">Upload course materials, assignments, and resources</p>
+                    </div>
+                  </div>
+                  
+                  <FileUploadSystem
+                    taskId={null}
+                    studentId={null}
+                    userRole="faculty"
+                    allowedTypes={['all']}
+                    maxFileSize={100 * 1024 * 1024}
+                    maxFiles={20}
+                    onFileUploaded={(file) => {
+                      console.log('File uploaded:', file);
+                    }}
+                  />
+                </div>
+
+                {/* Recent Files Section */}
+                <div className="bg-white rounded-xl shadow-sm border p-6">
+                  <div className="flex items-center justify-between mb-6">
+                    <h2 className="text-lg font-semibold text-gray-900">Recent Files</h2>
+                    <button className="text-purple-600 hover:text-purple-700 text-sm font-medium">
+                      View All Files
+                    </button>
+                  </div>
+                  
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                      <div className="flex items-center space-x-3">
+                        <FileText className="w-5 h-5 text-blue-500" />
+                        <div>
+                          <p className="font-medium text-gray-900">Assignment Guidelines.pdf</p>
+                          <p className="text-sm text-gray-500">Uploaded 2 hours ago • 2.4 MB</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <button className="p-1 text-gray-500 hover:bg-gray-200 rounded">
+                          <Download className="w-4 h-4" />
+                        </button>
+                        <button className="p-1 text-gray-500 hover:bg-gray-200 rounded">
+                          <MoreVertical className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* File Statistics */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="bg-white p-6 rounded-xl shadow-sm border">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                        <Upload className="w-5 h-5 text-blue-600" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-gray-600">Total Files</p>
+                        <p className="text-2xl font-bold text-gray-900">42</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-white p-6 rounded-xl shadow-sm border">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
+                        <FileText className="w-5 h-5 text-purple-600" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-gray-600">Storage Used</p>
+                        <p className="text-2xl font-bold text-gray-900">15.2 GB</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-white p-6 rounded-xl shadow-sm border">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
+                        <Download className="w-5 h-5 text-green-600" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-gray-600">Downloads</p>
+                        <p className="text-2xl font-bold text-gray-900">1,247</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-12">
+                <Server className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-gray-600 mb-2">Select a Server</h3>
+                <p className="text-gray-500">Choose a project server to manage its files</p>
+              </div>
+            )}
+          </div>
+        )}
         {activeTab === 'calendar' && <CalendarTab />}
-        {activeTab === 'analytics' && <AnalyticsTab />}
         {activeTab === 'profile' && <ProfileTab />}
       </main>
-
       {/* Create Server Modal */}
       {showServerModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -1626,5 +1869,11 @@ const EnhancedFacultyDashboard = ({ user, onLogout }) => {
     </div>
   );
 };
+// ADD THESE COMPONENTS before your return statement:
+
+
+  
+
 
 export default EnhancedFacultyDashboard;
+

@@ -240,6 +240,10 @@ router.get('/server/:serverId/teams', verifyToken, async (req, res) => {
 });
 
 // Create new task
+// Fix for backend/routes/taskRoutes.js - Create task route
+
+// FIND this section in your taskRoutes.js create route and REPLACE it:
+
 router.post('/create', verifyToken, async (req, res) => {
   try {
     if (req.user.role !== 'faculty') {
@@ -253,26 +257,38 @@ router.post('/create', verifyToken, async (req, res) => {
       title,
       description,
       serverId,
-      teamIds,
       dueDate,
       maxPoints,
-      priority,
+      assignmentType,
+      teamIds,
+      assignToAll,
       allowLateSubmissions,
       maxAttempts,
       allowFileUpload,
-      allowedFileTypes,
-      maxFileSize
+      allowedFileTypes, // This should already be an array from frontend
+      maxFileSize,
+      priority
     } = req.body;
 
-    // Validate required fields
-    if (!title || !description || !serverId || !teamIds || !dueDate) {
+    console.log('📝 Creating task with data:', {
+      title,
+      serverId,
+      assignToAll,
+      teamIds,
+      allowedFileTypes,
+      allowedFileTypesType: typeof allowedFileTypes,
+      allowedFileTypesIsArray: Array.isArray(allowedFileTypes)
+    });
+
+    // Validation
+    if (!title || !description || !serverId || !dueDate) {
       return res.status(400).json({ 
-        message: 'Missing required fields',
+        message: 'Missing required fields: title, description, serverId, dueDate',
         success: false 
       });
     }
 
-    // Verify server exists
+    // Get server and verify ownership
     const server = await ProjectServer.findById(serverId);
     if (!server) {
       return res.status(404).json({ 
@@ -281,38 +297,78 @@ router.post('/create', verifyToken, async (req, res) => {
       });
     }
 
-    // Parse teamIds if it's a string
-    let parsedTeamIds;
-    try {
-      parsedTeamIds = Array.isArray(teamIds) ? teamIds : JSON.parse(teamIds);
-    } catch (e) {
-      parsedTeamIds = [teamIds];
+    if (server.faculty.toString() !== req.user.id) {
+      return res.status(403).json({ 
+        message: 'You can only create tasks for your own servers',
+        success: false 
+      });
     }
 
-    // Create tasks for each selected team
-    const createdTasks = [];
-    
-    for (const teamId of parsedTeamIds) {
-      const team = await StudentTeam.findById(teamId);
-      if (!team) {
-        console.log(`Team ${teamId} not found, skipping...`);
-        continue;
+    // Get teams for assignment
+    let targetTeams = [];
+    if (assignToAll) {
+      targetTeams = await StudentTeam.find({ 
+        projectServer: server.code 
+      });
+    } else {
+      if (!teamIds || !Array.isArray(teamIds) || teamIds.length === 0) {
+        return res.status(400).json({ 
+          message: 'Please select at least one team or choose "Assign to All Teams"',
+          success: false 
+        });
       }
+      targetTeams = await StudentTeam.find({ 
+        _id: { $in: teamIds },
+        projectServer: server.code 
+      });
+    }
 
+    if (targetTeams.length === 0) {
+      return res.status(400).json({ 
+        message: 'No valid teams found for assignment',
+        success: false 
+      });
+    }
+
+    // ✅ FIX: Handle allowedFileTypes properly - ensure it's always an array
+    let processedAllowedFileTypes = [];
+    if (allowFileUpload) {
+      if (Array.isArray(allowedFileTypes)) {
+        processedAllowedFileTypes = allowedFileTypes;
+      } else if (typeof allowedFileTypes === 'string') {
+        try {
+          // Try to parse if it's a JSON string
+          processedAllowedFileTypes = JSON.parse(allowedFileTypes);
+        } catch {
+          // If not JSON, split by comma
+          processedAllowedFileTypes = allowedFileTypes.split(',').map(type => type.trim());
+        }
+      } else {
+        // Default file types if none provided
+        processedAllowedFileTypes = ['pdf', 'doc', 'docx'];
+      }
+    }
+
+    console.log('✅ Processed allowedFileTypes:', processedAllowedFileTypes);
+
+    // Create tasks for each team
+    const createdTasks = [];
+    for (const team of targetTeams) {
       const task = new Task({
         title,
         description,
-        server: serverId,
-        team: teamId,
         faculty: req.user.id,
+        server: serverId,
+        team: team._id,
         dueDate: new Date(dueDate),
         maxPoints: parseInt(maxPoints) || 100,
-        priority: priority || 'medium',
-        allowLateSubmissions: allowLateSubmissions === 'true',
+        allowLateSubmissions: allowLateSubmissions || false,
         maxAttempts: parseInt(maxAttempts) || 1,
-        allowFileUpload: allowFileUpload !== 'false',
-        allowedFileTypes: allowedFileTypes ? JSON.parse(allowedFileTypes) : ['pdf', 'doc', 'docx'],
+        allowFileUpload: allowFileUpload || false,
+        // ✅ CRITICAL: Store as array, not string
+        allowedFileTypes: processedAllowedFileTypes,
         maxFileSize: parseInt(maxFileSize) || 10485760, // 10MB default
+        priority: priority || 'medium',
         status: 'active'
       });
 
@@ -329,7 +385,8 @@ router.post('/create', verifyToken, async (req, res) => {
         id: task._id,
         title: task.title,
         teamId: task.team,
-        dueDate: task.dueDate
+        dueDate: task.dueDate,
+        allowedFileTypes: task.allowedFileTypes // Return the processed array
       }))
     });
 

@@ -18,7 +18,8 @@ import {
   Download,
   X
 } from 'lucide-react';
-import TaskCreator from './TaskCreator';
+import TaskCreator from './TaskManagement/TaskCreator';
+
 
 const FacultyTaskList = ({ serverId, serverTitle }) => {
   const [tasks, setTasks] = useState([]);
