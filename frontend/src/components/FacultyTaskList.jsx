@@ -49,7 +49,7 @@ const FacultyTaskList = ({ serverId, serverTitle }) => {
       const endpoint = serverId 
         ? `${API_BASE}/tasks/server/${serverId}`
         : `${API_BASE}/tasks/faculty-tasks`;
-
+console.log('Fetching tasks from:', endpoint); 
       const response = await fetch(endpoint, {
         credentials: 'include'
       });

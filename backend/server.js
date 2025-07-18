@@ -155,7 +155,14 @@ const teamRoutes = require("./routes/teamRoutes.js");
 const taskRoutes = require("./routes/taskRoutes.js");
 const notificationRoutes = require('./routes/notificationRoutes');
 const analyticsRoutes = require("./routes/analyticsRoutes");
-
+app.get('/api/health', (req, res) => {
+  res.status(200).json({
+    status: 'OK',
+    message: 'Server is running',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime()
+  });
+});
 // Import new feature routes (with error handling)
 let fileRoutes, calendarRoutes, messagingRoutes, settingsRoutes;
 
@@ -682,7 +689,14 @@ app.get("/api/files/submissions/:filename", (req, res) => {
     });
   }
 });
-
+app.get('/api/health', (req, res) => {
+  res.status(200).json({
+    status: 'OK',
+    message: 'Server is running',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime()
+  });
+});
 // Enhanced 404 handler for API routes
 app.use('/api/*', (req, res) => {
   if (process.env.NODE_ENV !== 'production') {

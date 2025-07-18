@@ -46,7 +46,7 @@ import TaskCreator from './TaskManagement/TaskCreator';
 import FacultyTaskList from './FacultyTaskList'; 
 import ComprehensiveAnalyticsDashboard from './Analytics/ComprehensiveAnalyticsDashboard';
 import FileUploadSystem from './FileSystem/FileUploadSystem';
-// Utility Functions
+import { API_BASE } from '../App';
 const dateUtils = {
   getRelativeTime: (date) => {
     const now = new Date();
@@ -132,7 +132,7 @@ const EnhancedFacultyDashboard = ({ user, onLogout }) => {
     recentActivity: 0
   });
 
-  const API_BASE = process.env.REACT_APP_API_BASE_URL || 'http://localhost:5000/api';
+  
   const refreshInterval = useRef(null);
 
   // Network status monitoring
