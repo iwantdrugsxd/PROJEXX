@@ -5,9 +5,492 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const verifyToken = require('../middleware/verifyToken');
-
+const mongoose = require('mongoose');
 const router = express.Router();
+// Add these enhancements to your existing taskRoutes.js file
 
+// Enhanced logging function - ADD THIS AT THE TOP
+const logWithTimestamp = (level, message, data = null) => {
+  const timestamp = new Date().toISOString();
+  const logMessage = `[${timestamp}] [TASK_ROUTES] [${level.toUpperCase()}] ${message}`;
+  
+  if (level === 'error') {
+    console.error(logMessage, data ? JSON.stringify(data, null, 2) : '');
+  } else if (level === 'warn') {
+    console.warn(logMessage, data ? JSON.stringify(data, null, 2) : '');
+  } else {
+    console.log(logMessage, data ? JSON.stringify(data, null, 2) : '');
+  }
+};
+
+// Enhanced multer error handler - ADD THIS FUNCTION
+const handleMulterError = (error, req, res, reject) => {
+  logWithTimestamp('error', 'Multer error occurred', {
+    error: error.message,
+    code: error.code,
+    field: error.field,
+    originalUrl: req.originalUrl,
+    method: req.method
+  });
+
+  if (error instanceof multer.MulterError) {
+    switch (error.code) {
+      case 'LIMIT_FILE_SIZE':
+        return res.status(400).json({
+          success: false,
+          message: 'File too large. Maximum size exceeded.'
+        });
+      case 'LIMIT_FILE_COUNT':
+        return res.status(400).json({
+          success: false,
+          message: 'Too many files. Maximum 10 files allowed.'
+        });
+      case 'LIMIT_UNEXPECTED_FILE':
+        return res.status(400).json({
+          success: false,
+          message: 'Unexpected file field.'
+        });
+      default:
+        return res.status(400).json({
+          success: false,
+          message: `Upload error: ${error.message}`
+        });
+    }
+  } else {
+    return res.status(400).json({
+      success: false,
+      message: error.message || 'File upload failed'
+    });
+  }
+};
+
+// REPLACE your existing submit route with this enhanced version:
+router.post('/tasks/:taskId/submit', verifyToken, async (req, res) => {
+  const submissionId = uuidv4();
+  
+  logWithTimestamp('info', '=== TASK SUBMISSION START ===', {
+    submissionId,
+    taskId: req.params.taskId,
+    userId: req.user?.id,
+    userRole: req.user?.role,
+    headers: {
+      'content-type': req.headers['content-type'],
+      'content-length': req.headers['content-length']
+    }
+  });
+
+  try {
+    // Validate user role
+    if (req.user.role !== 'student') {
+      logWithTimestamp('error', 'Access denied - non-student user', {
+        userId: req.user.id,
+        role: req.user.role
+      });
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. Student access required.'
+      });
+    }
+
+    // Find and validate task
+    logWithTimestamp('info', 'Looking up task', { taskId: req.params.taskId });
+    const task = await Task.findById(req.params.taskId).populate('teams');
+    
+    if (!task) {
+      logWithTimestamp('error', 'Task not found', { taskId: req.params.taskId });
+      return res.status(404).json({
+        success: false,
+        message: 'Task not found'
+      });
+    }
+
+    logWithTimestamp('info', 'Task found successfully', {
+      taskId: task._id,
+      title: task.title,
+      allowFileUpload: task.allowFileUpload,
+      maxFileSize: task.maxFileSize,
+      allowedFileTypes: task.allowedFileTypes,
+      teamsCount: task.teams?.length || 0
+    });
+
+    // Check if student is assigned to this task
+    const studentTeams = task.teams.filter(team => 
+      team.members.some(member => member.toString() === req.user.id)
+    );
+
+    if (studentTeams.length === 0) {
+      logWithTimestamp('error', 'Student not assigned to task', {
+        studentId: req.user.id,
+        taskId: task._id,
+        availableTeams: task.teams.map(t => t._id)
+      });
+      return res.status(403).json({
+        success: false,
+        message: 'You are not assigned to this task'
+      });
+    }
+
+    logWithTimestamp('info', 'Student assignment verified', {
+      studentId: req.user.id,
+      assignedTeams: studentTeams.length
+    });
+
+    // Check submission attempts
+    const existingSubmissions = task.submissions?.filter(s => 
+      s.student.toString() === req.user.id
+    ) || [];
+
+    logWithTimestamp('info', 'Checking submission attempts', {
+      existingSubmissions: existingSubmissions.length,
+      maxAttempts: task.maxAttempts
+    });
+
+    if (existingSubmissions.length >= task.maxAttempts) {
+      logWithTimestamp('error', 'Maximum submission attempts reached', {
+        attempts: existingSubmissions.length,
+        maxAttempts: task.maxAttempts
+      });
+      return res.status(400).json({
+        success: false,
+        message: `Maximum ${task.maxAttempts} submission attempts reached`
+      });
+    }
+
+    // Set up multer with task-specific settings
+    req.allowedFileTypes = task.allowedFileTypes;
+    req.maxFileSize = task.maxFileSize;
+    
+    logWithTimestamp('info', 'Setting up file upload middleware', {
+      allowedFileTypes: task.allowedFileTypes,
+      maxFileSize: task.maxFileSize,
+      allowFileUpload: task.allowFileUpload
+    });
+    
+    const uploadMiddleware = upload.array('files', 10);
+    
+    // Handle file upload with enhanced error handling
+    await new Promise((resolve, reject) => {
+      uploadMiddleware(req, res, (error) => {
+        if (error) {
+          logWithTimestamp('error', 'File upload middleware error', {
+            error: error.message,
+            code: error.code,
+            field: error.field
+          });
+          handleMulterError(error, req, res, reject);
+        } else {
+          logWithTimestamp('info', 'File upload middleware completed successfully', {
+            filesCount: req.files?.length || 0
+          });
+          resolve();
+        }
+      });
+    });
+
+    logWithTimestamp('info', 'Files uploaded successfully', {
+      filesCount: req.files?.length || 0,
+      files: req.files?.map(f => ({
+        originalname: f.originalname,
+        filename: f.filename,
+        size: f.size,
+        mimetype: f.mimetype
+      })) || []
+    });
+
+    // Process form data
+    const comment = req.body.comment?.trim() || '';
+    let collaborators = [];
+    
+    logWithTimestamp('info', 'Processing form data', {
+      comment: comment ? 'provided' : 'empty',
+      rawCollaborators: req.body.collaborators
+    });
+    
+    try {
+      if (req.body.collaborators) {
+        collaborators = typeof req.body.collaborators === 'string' 
+          ? JSON.parse(req.body.collaborators) 
+          : req.body.collaborators;
+        
+        // Validate and filter collaborator emails
+        collaborators = collaborators
+          .filter(email => email && email.trim())
+          .map(email => email.trim().toLowerCase())
+          .filter(email => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email));
+          
+        logWithTimestamp('info', 'Collaborators processed', {
+          originalCount: req.body.collaborators.length,
+          validCount: collaborators.length,
+          collaborators: collaborators
+        });
+      }
+    } catch (error) {
+      logWithTimestamp('warn', 'Error parsing collaborators', {
+        error: error.message,
+        rawCollaborators: req.body.collaborators
+      });
+      collaborators = [];
+    }
+
+    // Process uploaded files with enhanced validation
+    const processedFiles = [];
+    if (req.files && req.files.length > 0) {
+      logWithTimestamp('info', 'Processing uploaded files', {
+        filesCount: req.files.length
+      });
+
+      for (const [index, file] of req.files.entries()) {
+        logWithTimestamp('info', `Processing file ${index + 1}`, {
+          originalname: file.originalname,
+          filename: file.filename,
+          size: file.size,
+          mimetype: file.mimetype,
+          path: file.path
+        });
+
+        // Validate file size against task limit
+        if (file.size > task.maxFileSize) {
+          logWithTimestamp('error', 'File exceeds size limit', {
+            filename: file.originalname,
+            fileSize: file.size,
+            maxSize: task.maxFileSize
+          });
+
+          // Clean up file
+          try {
+            await fs.unlink(file.path);
+            logWithTimestamp('info', 'Cleaned up oversized file', { path: file.path });
+          } catch (cleanupError) {
+            logWithTimestamp('error', 'Failed to cleanup oversized file', {
+              path: file.path,
+              error: cleanupError.message
+            });
+          }
+          
+          return res.status(400).json({
+            success: false,
+            message: `File ${file.originalname} exceeds size limit of ${Math.round(task.maxFileSize / 1024 / 1024)}MB`
+          });
+        }
+
+        // Validate file type
+        const fileExtension = path.extname(file.originalname).toLowerCase().substring(1);
+        if (task.allowedFileTypes && task.allowedFileTypes.length > 0) {
+          if (!task.allowedFileTypes.includes(fileExtension)) {
+            logWithTimestamp('error', 'File type not allowed', {
+              filename: file.originalname,
+              extension: fileExtension,
+              allowedTypes: task.allowedFileTypes
+            });
+
+            // Clean up file
+            try {
+              await fs.unlink(file.path);
+              logWithTimestamp('info', 'Cleaned up invalid file type', { path: file.path });
+            } catch (cleanupError) {
+              logWithTimestamp('error', 'Failed to cleanup invalid file', {
+                path: file.path,
+                error: cleanupError.message
+              });
+            }
+
+            return res.status(400).json({
+              success: false,
+              message: `File type .${fileExtension} not allowed. Allowed types: ${task.allowedFileTypes.join(', ')}`
+            });
+          }
+        }
+
+        processedFiles.push({
+          filename: file.filename,
+          originalName: file.originalname,
+          path: file.path,
+          size: file.size,
+          mimetype: file.mimetype,
+          uploadedAt: new Date()
+        });
+
+        logWithTimestamp('info', `File ${index + 1} processed successfully`, {
+          originalname: file.originalname,
+          filename: file.filename
+        });
+      }
+    }
+
+    logWithTimestamp('info', 'All files processed successfully', {
+      processedFiles: processedFiles.length
+    });
+
+    // Create submission object
+    const submission = {
+      id: uuidv4(),
+      student: req.user.id,
+      comment: comment,
+      files: processedFiles,
+      collaborators: collaborators,
+      submittedAt: new Date(),
+      status: 'submitted',
+      attempt: existingSubmissions.length + 1,
+      isLate: new Date() > new Date(task.dueDate),
+      ipAddress: req.ip,
+      userAgent: req.get('User-Agent')
+    };
+
+    logWithTimestamp('info', 'Created submission object', {
+      submissionId: submission.id,
+      studentId: submission.student,
+      filesCount: submission.files.length,
+      collaboratorsCount: submission.collaborators.length,
+      attempt: submission.attempt,
+      isLate: submission.isLate
+    });
+
+    // Add submission to task
+    if (!task.submissions) {
+      task.submissions = [];
+    }
+    task.submissions.push(submission);
+    task.updatedAt = new Date();
+
+    // Save task with new submission
+    await task.save();
+
+    logWithTimestamp('info', 'Task submission saved to database', {
+      taskId: task._id,
+      submissionId: submission.id
+    });
+
+    logWithTimestamp('info', '=== TASK SUBMISSION COMPLETED SUCCESSFULLY ===', {
+      submissionId: submission.id,
+      taskId: task._id,
+      studentId: req.user.id,
+      filesCount: processedFiles.length
+    });
+
+    res.status(201).json({
+      success: true,
+      message: 'Task submitted successfully',
+      submission: {
+        id: submission.id,
+        submittedAt: submission.submittedAt,
+        filesCount: processedFiles.length,
+        status: submission.status,
+        attempt: submission.attempt,
+        isLate: submission.isLate
+      }
+    });
+
+  } catch (error) {
+    logWithTimestamp('error', 'Task submission error occurred', {
+      error: error.message,
+      stack: error.stack,
+      taskId: req.params.taskId,
+      userId: req.user?.id
+    });
+    
+    // Clean up uploaded files on error
+    if (req.files) {
+      logWithTimestamp('info', 'Cleaning up files due to error', {
+        filesCount: req.files.length
+      });
+
+      for (const file of req.files) {
+        try {
+          await fs.unlink(file.path);
+          logWithTimestamp('info', 'Cleaned up file', { path: file.path });
+        } catch (cleanupError) {
+          logWithTimestamp('error', 'Failed to cleanup file', {
+            path: file.path,
+            error: cleanupError.message
+          });
+        }
+      }
+    }
+    
+    logWithTimestamp('info', '=== TASK SUBMISSION ERROR END ===');
+    
+    res.status(500).json({ 
+      message: error.message || 'Failed to submit task',
+      success: false 
+    });
+  }
+});
+
+// ADD this debugging route to test file upload endpoint
+router.options('/tasks/:taskId/submit', verifyToken, (req, res) => {
+  logWithTimestamp('info', 'OPTIONS request for submit endpoint', {
+    taskId: req.params.taskId,
+    userId: req.user?.id
+  });
+  
+  res.status(200).json({
+    success: true,
+    message: 'Submit endpoint is available',
+    methods: ['POST'],
+    accepts: ['multipart/form-data'],
+    taskId: req.params.taskId
+  });
+});
+
+// ADD this route to check task existence and permissions
+router.get('/tasks/:taskId/check', verifyToken, async (req, res) => {
+  try {
+    logWithTimestamp('info', 'Task check request', {
+      taskId: req.params.taskId,
+      userId: req.user?.id
+    });
+
+    const task = await Task.findById(req.params.taskId).populate('teams');
+    
+    if (!task) {
+      logWithTimestamp('error', 'Task not found in check', { taskId: req.params.taskId });
+      return res.status(404).json({
+        success: false,
+        message: 'Task not found'
+      });
+    }
+
+    // Check student assignment
+    const studentTeams = task.teams.filter(team => 
+      team.members.some(member => member.toString() === req.user.id)
+    );
+
+    const isAssigned = studentTeams.length > 0;
+    
+    logWithTimestamp('info', 'Task check completed', {
+      taskId: task._id,
+      title: task.title,
+      isAssigned: isAssigned,
+      allowFileUpload: task.allowFileUpload,
+      studentTeams: studentTeams.length
+    });
+
+    res.json({
+      success: true,
+      task: {
+        id: task._id,
+        title: task.title,
+        allowFileUpload: task.allowFileUpload,
+        maxFileSize: task.maxFileSize,
+        allowedFileTypes: task.allowedFileTypes,
+        isAssigned: isAssigned,
+        teamsCount: task.teams.length,
+        assignedTeams: studentTeams.length
+      }
+    });
+
+  } catch (error) {
+    logWithTimestamp('error', 'Task check error', {
+      error: error.message,
+      taskId: req.params.taskId
+    });
+    
+    res.status(500).json({
+      success: false,
+      message: 'Error checking task'
+    });
+  }
+});
 // File storage configuration
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {

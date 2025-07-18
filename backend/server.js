@@ -163,6 +163,58 @@ app.get('/api/health', (req, res) => {
     uptime: process.uptime()
   });
 });
+app.use(express.json({ 
+  limit: '50mb',
+  verify: (req, res, buf) => {
+    // Log JSON payload size for debugging
+    if (req.originalUrl.includes('/submit')) {
+      console.log(`[${new Date().toISOString()}] [SERVER] JSON payload size: ${buf.length} bytes`);
+    }
+  }
+}));
+
+app.use(express.urlencoded({ 
+  extended: true, 
+  limit: '50mb',
+  verify: (req, res, buf) => {
+    // Log form data size for debugging
+    if (req.originalUrl.includes('/submit')) {
+      console.log(`[${new Date().toISOString()}] [SERVER] Form data size: ${buf.length} bytes`);
+    }
+  }
+}));
+app.use((req, res, next) => {
+  const timestamp = new Date().toISOString();
+  
+  // Log all requests
+  console.log(`[${timestamp}] [SERVER] ${req.method} ${req.originalUrl}`);
+  
+  // Enhanced logging for file upload requests
+  if (req.originalUrl.includes('/submit')) {
+    console.log(`[${timestamp}] [SERVER] SUBMIT REQUEST DETAILS:`, {
+      method: req.method,
+      url: req.originalUrl,
+      contentType: req.headers['content-type'],
+      contentLength: req.headers['content-length'],
+      userAgent: req.headers['user-agent'],
+      origin: req.headers.origin,
+      referer: req.headers.referer
+    });
+  }
+  
+  // Log request body for non-file uploads (debugging)
+  if (req.body && Object.keys(req.body).length > 0 && !req.originalUrl.includes('/upload') && req.method === 'POST') {
+    console.log(`[${timestamp}] [SERVER] Request body:`, JSON.stringify(req.body, null, 2));
+  }
+  
+  // Log file uploads
+  if (req.headers['content-type'] && req.headers['content-type'].includes('multipart/form-data')) {
+    console.log(`[${timestamp}] [SERVER] Multipart form data detected - file upload in progress`);
+  }
+  
+  next();
+});
+
 // Import new feature routes (with error handling)
 let fileRoutes, calendarRoutes, messagingRoutes, settingsRoutes;
 
@@ -287,12 +339,74 @@ app.use(express.urlencoded({
 app.use(cookieParser());
 
 // ✅ FIXED: Serve static files with security headers and proper paths
+// ADD these enhancements to your server.js file
+
+// Enhanced file upload configuration - ADD AFTER YOUR EXISTING MIDDLEWARE
+app.use(express.json({ 
+  limit: '50mb',
+  verify: (req, res, buf) => {
+    // Log JSON payload size for debugging
+    if (req.originalUrl.includes('/submit')) {
+      console.log(`[${new Date().toISOString()}] [SERVER] JSON payload size: ${buf.length} bytes`);
+    }
+  }
+}));
+
+app.use(express.urlencoded({ 
+  extended: true, 
+  limit: '50mb',
+  verify: (req, res, buf) => {
+    // Log form data size for debugging
+    if (req.originalUrl.includes('/submit')) {
+      console.log(`[${new Date().toISOString()}] [SERVER] Form data size: ${buf.length} bytes`);
+    }
+  }
+}));
+
+// Enhanced request logging middleware - ADD THIS
+app.use((req, res, next) => {
+  const timestamp = new Date().toISOString();
+  
+  // Log all requests
+  console.log(`[${timestamp}] [SERVER] ${req.method} ${req.originalUrl}`);
+  
+  // Enhanced logging for file upload requests
+  if (req.originalUrl.includes('/submit')) {
+    console.log(`[${timestamp}] [SERVER] SUBMIT REQUEST DETAILS:`, {
+      method: req.method,
+      url: req.originalUrl,
+      contentType: req.headers['content-type'],
+      contentLength: req.headers['content-length'],
+      userAgent: req.headers['user-agent'],
+      origin: req.headers.origin,
+      referer: req.headers.referer
+    });
+  }
+  
+  // Log request body for non-file uploads (debugging)
+  if (req.body && Object.keys(req.body).length > 0 && !req.originalUrl.includes('/upload') && req.method === 'POST') {
+    console.log(`[${timestamp}] [SERVER] Request body:`, JSON.stringify(req.body, null, 2));
+  }
+  
+  // Log file uploads
+  if (req.headers['content-type'] && req.headers['content-type'].includes('multipart/form-data')) {
+    console.log(`[${timestamp}] [SERVER] Multipart form data detected - file upload in progress`);
+  }
+  
+  next();
+});
+
+// Enhanced static file serving - UPDATE YOUR EXISTING STATIC FILE CONFIGURATION
 app.use('/uploads', express.static(uploadsDir, {
   setHeaders: (res, filePath) => {
+    const timestamp = new Date().toISOString();
+    console.log(`[${timestamp}] [SERVER] Serving static file: ${filePath}`);
+    
     // Prevent execution of uploaded files
     res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
     
-    // Only set attachment for certain file types, allow images to display
+    // Set appropriate content disposition
     const ext = path.extname(filePath).toLowerCase();
     const imageTypes = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'];
     const documentTypes = ['.pdf', '.doc', '.docx', '.txt', '.zip', '.rar'];
@@ -303,11 +417,136 @@ app.use('/uploads', express.static(uploadsDir, {
       res.setHeader('Content-Disposition', 'inline');
     }
     
-    // Set appropriate cache headers
-    res.setHeader('Cache-Control', 'public, max-age=31536000'); // 1 year for static files
-  }
+    // Set cache headers
+    res.setHeader('Cache-Control', 'public, max-age=31536000');
+  },
+  // Add error handling for static files
+  fallthrough: false
 }));
+app.use('/uploads', (error, req, res, next) => {
+  const timestamp = new Date().toISOString();
+  console.error(`[${timestamp}] [SERVER] Static file error:`, {
+    error: error.message,
+    path: req.path,
+    method: req.method
+  });
+  
+  res.status(404).json({
+    success: false,
+    message: 'File not found'
+  });
+});
+app.get("/", (req, res) => {
+  const timestamp = new Date().toISOString();
+  const uptime = process.uptime();
+  const memoryUsage = process.memoryUsage();
+  
+  // Check upload directories
+  const uploadDirStatus = {
+    base: fs.existsSync(uploadsDir),
+    submissions: fs.existsSync(path.join(uploadsDir, 'submissions')),
+    faculty: fs.existsSync(path.join(uploadsDir, 'faculty')),
+    student: fs.existsSync(path.join(uploadsDir, 'student')),
+    profiles: fs.existsSync(path.join(uploadsDir, 'profiles'))
+  };
+  
+  // Check upload directory permissions
+  const checkPermissions = (dir) => {
+    try {
+      fs.accessSync(dir, fs.constants.R_OK | fs.constants.W_OK);
+      return true;
+    } catch (error) {
+      console.error(`[${timestamp}] [SERVER] Permission check failed for ${dir}:`, error.message);
+      return false;
+    }
+  };
+  
+  const uploadPermissions = {
+    base: uploadDirStatus.base ? checkPermissions(uploadsDir) : false,
+    submissions: uploadDirStatus.submissions ? checkPermissions(path.join(uploadsDir, 'submissions')) : false
+  };
+  
+  console.log(`[${timestamp}] [SERVER] Health check requested`);
+  
+  res.status(200).json({ 
+    message: "✅ ProjectFlow Backend Server",
+    status: "healthy",
+    timestamp: timestamp,
+    environment: process.env.NODE_ENV || 'development',
+    version: "2.1.0",
+    uptime: `${Math.floor(uptime / 60)} minutes`,
+    memory: {
+      used: `${Math.round(memoryUsage.heapUsed / 1024 / 1024)} MB`,
+      total: `${Math.round(memoryUsage.heapTotal / 1024 / 1024)} MB`
+    },
+    database: {
+      status: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+      readyState: mongoose.connection.readyState
+    },
+    uploads: {
+      directories: uploadDirStatus,
+      permissions: uploadPermissions,
+      path: uploadsDir
+    }
+  });
+});
 
+// Enhanced error handling middleware - ADD THIS AT THE END
+app.use((error, req, res, next) => {
+  const timestamp = new Date().toISOString();
+  
+  console.error(`[${timestamp}] [SERVER] Unhandled error:`, {
+    error: error.message,
+    stack: error.stack,
+    method: req.method,
+    url: req.originalUrl,
+    userAgent: req.headers['user-agent']
+  });
+  
+  // Handle multer errors specifically
+  if (error.code === 'LIMIT_FILE_SIZE') {
+    return res.status(400).json({
+      success: false,
+      message: 'File too large'
+    });
+  }
+  
+  if (error.code === 'LIMIT_FILE_COUNT') {
+    return res.status(400).json({
+      success: false,
+      message: 'Too many files'
+    });
+  }
+  
+  // Handle JSON parsing errors
+  if (error instanceof SyntaxError && error.status === 400 && 'body' in error) {
+    return res.status(400).json({
+      success: false,
+      message: 'Invalid JSON payload'
+    });
+  }
+  
+  // Generic error response
+  res.status(500).json({
+    success: false,
+    message: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message
+  });
+});
+
+// Add startup logging
+const originalListen = app.listen;
+app.listen = function(port, ...args) {
+  const timestamp = new Date().toISOString();
+  
+  console.log(`[${timestamp}] [SERVER] ===== ProjectFlow Backend Starting =====`);
+  console.log(`[${timestamp}] [SERVER] Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`[${timestamp}] [SERVER] Port: ${port}`);
+  console.log(`[${timestamp}] [SERVER] Upload directory: ${uploadsDir}`);
+  console.log(`[${timestamp}] [SERVER] Database: ${mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected'}`);
+  console.log(`[${timestamp}] [SERVER] ========================================`);
+  
+  return originalListen.call(this, port, ...args);
+};
 // ✅ ADDITIONAL: Serve specific upload subdirectories
 app.use('/uploads/submissions', express.static(path.join(uploadsDir, 'submissions')));
 app.use('/uploads/profiles', express.static(path.join(uploadsDir, 'profiles')));

@@ -1,5 +1,4 @@
-// frontend/src/components/TaskManagement/TaskCreator.jsx - COMPLETE ACCESSIBLE VERSION
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { 
   X, 
   Calendar, 
@@ -30,8 +29,9 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
   const mountedRef = useRef(true);
   const fetchTimeoutRef = useRef(null);
   const abortControllerRef = useRef(null);
+  const validationTimeoutRef = useRef(null);
   
-  // ✅ Core Form State
+  // ✅ Core Form State - OPTIMIZED
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -53,23 +53,30 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
     notifyStudents: true
   });
 
-  // ✅ UI State
-  const [teams, setTeams] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [loadingTeams, setLoadingTeams] = useState(false);
-  const [errors, setErrors] = useState({});
-  const [showAdvanced, setShowAdvanced] = useState(false);
-  const [submitAttempted, setSubmitAttempted] = useState(false);
-  const [serverInfo, setServerInfo] = useState(null);
+  // ✅ UI State - SEPARATED for better performance
+  const [uiState, setUiState] = useState({
+    teams: [],
+    loading: false,
+    loadingTeams: false,
+    errors: {},
+    showAdvanced: false,
+    submitAttempted: false,
+    serverInfo: null,
+    networkStatus: 'online',
+    fetchAttempts: 0
+  });
+
+  // ✅ Validation state - SEPARATED and debounced
   const [validationErrors, setValidationErrors] = useState({});
-  const [networkStatus, setNetworkStatus] = useState('online'); // online, offline, checking
-  const [fetchAttempts, setFetchAttempts] = useState(0);
   
-  // ✅ Constants
-  const API_BASE = process.env.REACT_APP_API_BASE_URL || process.env.REACT_APP_API_BASE || 'http://localhost:5000/api';
+  // ✅ Constants - MEMOIZED
+  const API_BASE = useMemo(() => 
+    process.env.REACT_APP_API_BASE_URL || process.env.REACT_APP_API_BASE || 'http://localhost:5000/api'
+  , []);
+  
   const MAX_RETRY_ATTEMPTS = 3;
   
-  const fileTypeOptions = [
+  const fileTypeOptions = useMemo(() => [
     { value: 'pdf', label: 'PDF Documents', icon: '📄' },
     { value: 'doc', label: 'Word Documents (.doc)', icon: '📝' },
     { value: 'docx', label: 'Word Documents (.docx)', icon: '📝' },
@@ -85,29 +92,85 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
     { value: 'html', label: 'HTML Files', icon: '🌐' },
     { value: 'css', label: 'CSS Files', icon: '🎨' },
     { value: 'json', label: 'JSON Files', icon: '📋' }
-  ];
+  ], []);
 
-  const priorityOptions = [
+  const priorityOptions = useMemo(() => [
     { value: 'low', label: 'Low Priority', color: 'text-green-600 bg-green-50 border-green-200', icon: '🟢' },
     { value: 'medium', label: 'Medium Priority', color: 'text-yellow-600 bg-yellow-50 border-yellow-200', icon: '🟡' },
     { value: 'high', label: 'High Priority', color: 'text-orange-600 bg-orange-50 border-orange-200', icon: '🟠' },
     { value: 'urgent', label: 'Urgent', color: 'text-red-600 bg-red-50 border-red-200', icon: '🔴' }
-  ];
+  ], []);
 
-  // ✅ Simplified Network status check (No CORS Issues)
-  const checkNetworkStatus = async () => {
-    setNetworkStatus('checking');
+  // ✅ OPTIMIZED: Fast validation without debouncing for immediate feedback
+  const validateFieldSync = useCallback((name, value) => {
+    switch (name) {
+      case 'title':
+        if (!value.trim()) return 'Task title is required';
+        if (value.length < 3) return 'Title must be at least 3 characters';
+        if (value.length > 100) return 'Title must be less than 100 characters';
+        return null;
+        
+      case 'description':
+        if (!value.trim()) return 'Description is required';
+        if (value.length < 10) return 'Description must be at least 10 characters';
+        if (value.length > 2000) return 'Description must be less than 2000 characters';
+        return null;
+        
+      case 'dueDate':
+        if (!value) return 'Due date is required';
+        const dueDate = new Date(value);
+        const now = new Date();
+        const minDate = new Date(now.getTime() + 30 * 60 * 1000);
+        if (dueDate <= minDate) return 'Due date must be at least 30 minutes in the future';
+        return null;
+        
+      case 'maxPoints':
+        const points = parseFloat(value);
+        if (!points || points < 1) return 'Maximum points must be at least 1';
+        if (points > 1000) return 'Maximum points cannot exceed 1000';
+        return null;
+        
+      case 'maxAttempts':
+        const attempts = parseInt(value);
+        if (!attempts || attempts < 1) return 'Must allow at least 1 attempt';
+        if (attempts > 10) return 'Cannot exceed 10 attempts';
+        return null;
+        
+      default:
+        return null;
+    }
+  }, []);
+
+  // ✅ OPTIMIZED: Debounced validation update (non-blocking)
+  const updateValidationErrors = useCallback((name, error) => {
+    if (validationTimeoutRef.current) {
+      clearTimeout(validationTimeoutRef.current);
+    }
+    
+    validationTimeoutRef.current = setTimeout(() => {
+      setValidationErrors(prev => {
+        if (error) {
+          return { ...prev, [name]: error };
+        } else {
+          const { [name]: removed, ...rest } = prev;
+          return rest;
+        }
+      });
+    }, 100); // Very short debounce for smooth experience
+  }, []);
+
+  // ✅ Network status check
+  const checkNetworkStatus = useCallback(async () => {
+    setUiState(prev => ({ ...prev, networkStatus: 'checking' }));
     try {
-      // Skip the health check and just assume online
-      // The actual API calls will determine if we're really online
-      setNetworkStatus('online');
+      setUiState(prev => ({ ...prev, networkStatus: 'online' }));
       return true;
     } catch (error) {
       console.error('❌ Network check failed:', error);
-      setNetworkStatus('offline');
+      setUiState(prev => ({ ...prev, networkStatus: 'offline' }));
       return false;
     }
-  };
+  }, []);
 
   // ✅ Initialize Component
   useEffect(() => {
@@ -122,11 +185,12 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
       mountedRef.current = false;
       if (fetchTimeoutRef.current) clearTimeout(fetchTimeoutRef.current);
       if (abortControllerRef.current) abortControllerRef.current.abort();
+      if (validationTimeoutRef.current) clearTimeout(validationTimeoutRef.current);
     };
   }, [serverId]);
 
-  // ✅ Enhanced Server Info Fetching
-  const fetchServerInfo = async () => {
+  // ✅ Server info fetching
+  const fetchServerInfo = useCallback(async () => {
     if (!serverId) return;
     
     try {
@@ -138,25 +202,27 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
         const data = await response.json();
         const server = data.servers?.find(s => s._id === serverId);
         if (server && mountedRef.current) {
-          setServerInfo(server);
+          setUiState(prev => ({ ...prev, serverInfo: server }));
         }
       }
     } catch (error) {
       console.error('❌ Failed to fetch server info:', error);
     }
-  };
+  }, [serverId, API_BASE]);
 
-  // ✅ Optimized Team Fetching (Skip problematic network check)
-  const fetchTeamsWithRetry = async (retryCount = 0) => {
+  // ✅ Optimized Team Fetching
+  const fetchTeamsWithRetry = useCallback(async (retryCount = 0) => {
     if (!serverId || !mountedRef.current) return;
     
     console.log(`🔄 Fetching teams for server ${serverId} (attempt ${retryCount + 1})`);
     
-    setLoadingTeams(true);
-    setFetchAttempts(retryCount + 1);
-    setErrors(prev => ({ ...prev, teams: null }));
+    setUiState(prev => ({ 
+      ...prev, 
+      loadingTeams: true, 
+      fetchAttempts: retryCount + 1,
+      errors: { ...prev.errors, teams: null }
+    }));
     
-    // Abort previous request if still pending
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
@@ -164,14 +230,12 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
     abortControllerRef.current = new AbortController();
     
     try {
-      // Skip the problematic network check - just proceed with API calls
-      setNetworkStatus('online');
+      setUiState(prev => ({ ...prev, networkStatus: 'online' }));
       
-      // Try multiple endpoints in order of preference
       const endpoints = [
-        `${API_BASE}/teamRoutes/server/${serverId}/teams`,  // Primary endpoint
-        `${API_BASE}/tasks/server/${serverId}/teams`,       // Alternative from tasks
-        `${API_BASE}/teamRoutes/faculty-teams`              // Fallback - get all faculty teams
+        `${API_BASE}/teamRoutes/server/${serverId}/teams`,
+        `${API_BASE}/tasks/server/${serverId}/teams`,
+        `${API_BASE}/teamRoutes/faculty-teams`
       ];
       
       let teams = [];
@@ -197,17 +261,14 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
           console.log(`📡 Response from ${endpoint}:`, data);
           
           if (response.ok && data.success) {
-            // Handle different response formats
             if (data.teams) {
               teams = data.teams;
             } else if (Array.isArray(data)) {
               teams = data;
             }
             
-            // If using faculty-teams endpoint, filter for current server
             if (endpoint.includes('faculty-teams') && teams.length > 0) {
               try {
-                // Get server info to filter teams by server code
                 const serverResponse = await fetch(`${API_BASE}/projectServers/faculty-servers`, {
                   credentials: 'include'
                 });
@@ -225,13 +286,12 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
                 }
               } catch (filterError) {
                 console.log('⚠️ Could not filter teams by server:', filterError);
-                // Continue with unfiltered teams
               }
             }
             
             successfulEndpoint = endpoint;
             console.log(`✅ Successfully fetched ${teams.length} teams from ${endpoint}`);
-            break; // Success, exit the loop
+            break;
             
           } else {
             lastError = data.message || `HTTP ${response.status}`;
@@ -244,12 +304,14 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
         }
       }
       
-      // Process results
       if (teams.length > 0) {
-        setTeams(teams);
-        setNetworkStatus('online');
+        setUiState(prev => ({ 
+          ...prev, 
+          teams, 
+          networkStatus: 'online',
+          errors: { ...prev.errors, teams: null }
+        }));
         
-        // Auto-select all teams if requested
         if (formData.assignToAll) {
           setFormData(prev => ({
             ...prev,
@@ -257,13 +319,11 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
           }));
         }
         
-        setErrors(prev => ({ ...prev, teams: null }));
         console.log(`🎉 Successfully loaded ${teams.length} teams using ${successfulEndpoint}`);
         
       } else {
-        // No teams found
         console.log('📭 No teams found in any endpoint');
-        setTeams([]);
+        setUiState(prev => ({ ...prev, teams: [] }));
         
         let errorMessage = 'No teams found. Students need to create teams before you can assign tasks.';
         
@@ -277,9 +337,9 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
           }
         }
         
-        setErrors(prev => ({ 
+        setUiState(prev => ({ 
           ...prev, 
-          teams: errorMessage
+          errors: { ...prev.errors, teams: errorMessage }
         }));
       }
       
@@ -293,10 +353,10 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
         return;
       }
       
-      setNetworkStatus('offline');
+      setUiState(prev => ({ ...prev, networkStatus: 'offline' }));
       
       if (retryCount < MAX_RETRY_ATTEMPTS - 1) {
-        const retryDelay = Math.pow(2, retryCount) * 1000; // Exponential backoff
+        const retryDelay = Math.pow(2, retryCount) * 1000;
         console.log(`⏱️ Retrying in ${retryDelay}ms...`);
         
         fetchTimeoutRef.current = setTimeout(() => {
@@ -306,7 +366,6 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
         }, retryDelay);
         return;
       } else {
-        // Final failure
         let errorMessage = 'Failed to load teams after multiple attempts.';
         
         if (error.message.includes('Network connection')) {
@@ -317,99 +376,76 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
           errorMessage = 'Request timed out. Please try again later.';
         }
         
-        setErrors(prev => ({ 
+        setUiState(prev => ({ 
           ...prev, 
-          teams: errorMessage
+          errors: { ...prev.errors, teams: errorMessage }
         }));
       }
     } finally {
       if (mountedRef.current) {
-        setLoadingTeams(false);
+        setUiState(prev => ({ ...prev, loadingTeams: false }));
       }
     }
-  };
+  }, [serverId, API_BASE, formData.assignToAll]);
 
   // ✅ Manual Refresh Handler
-  const handleRefreshTeams = async () => {
-    setTeams([]);
-    setFetchAttempts(0);
+  const handleRefreshTeams = useCallback(async () => {
+    setUiState(prev => ({ ...prev, teams: [], fetchAttempts: 0 }));
     await fetchTeamsWithRetry();
-  };
+  }, [fetchTeamsWithRetry]);
 
-  // ✅ Real-time Form Validation
-  const validateField = useCallback((name, value) => {
-    const newErrors = { ...validationErrors };
+  // ✅ OPTIMIZED: Fast input handler - NO DEBOUNCING
+  const handleInputChange = useCallback((e) => {
+    const { name, value, type, checked } = e.target;
     
-    switch (name) {
-      case 'title':
-        if (!value.trim()) {
-          newErrors.title = 'Task title is required';
-        } else if (value.length < 3) {
-          newErrors.title = 'Title must be at least 3 characters';
-        } else if (value.length > 100) {
-          newErrors.title = 'Title must be less than 100 characters';
-        } else {
-          delete newErrors.title;
-        }
-        break;
-        
-      case 'description':
-        if (!value.trim()) {
-          newErrors.description = 'Description is required';
-        } else if (value.length < 10) {
-          newErrors.description = 'Description must be at least 10 characters';
-        } else if (value.length > 2000) {
-          newErrors.description = 'Description must be less than 2000 characters';
-        } else {
-          delete newErrors.description;
-        }
-        break;
-        
-      case 'dueDate':
-        if (!value) {
-          newErrors.dueDate = 'Due date is required';
-        } else {
-          const dueDate = new Date(value);
-          const now = new Date();
-          const minDate = new Date(now.getTime() + 30 * 60 * 1000); // 30 minutes from now
-          
-          if (dueDate <= minDate) {
-            newErrors.dueDate = 'Due date must be at least 30 minutes in the future';
-          } else {
-            delete newErrors.dueDate;
-          }
-        }
-        break;
-        
-      case 'maxPoints':
-        const points = parseFloat(value);
-        if (!points || points < 1) {
-          newErrors.maxPoints = 'Maximum points must be at least 1';
-        } else if (points > 1000) {
-          newErrors.maxPoints = 'Maximum points cannot exceed 1000';
-        } else {
-          delete newErrors.maxPoints;
-        }
-        break;
-        
-      case 'maxAttempts':
-        const attempts = parseInt(value);
-        if (!attempts || attempts < 1) {
-          newErrors.maxAttempts = 'Must allow at least 1 attempt';
-        } else if (attempts > 10) {
-          newErrors.maxAttempts = 'Cannot exceed 10 attempts';
-        } else {
-          delete newErrors.maxAttempts;
-        }
-        break;
-        
-      default:
-        break;
+    // IMMEDIATE state update for smooth typing
+    setFormData(prev => {
+      if (name === 'team') {
+        const currentTeamIds = Array.isArray(prev.team) ? prev.team : [];
+        return {
+          ...prev,
+          team: checked 
+            ? [...currentTeamIds, value]
+            : currentTeamIds.filter(id => id !== value)
+        };
+      } else if (name === 'allowedFileTypes') {
+        const currentFileTypes = Array.isArray(prev.allowedFileTypes) ? prev.allowedFileTypes : [];
+        return {
+          ...prev,
+          allowedFileTypes: checked
+            ? [...currentFileTypes, value]
+            : currentFileTypes.filter(type => type !== value)
+        };
+      } else if (name === 'assignToAll') {
+        return {
+          ...prev,
+          assignToAll: checked,
+          team: checked ? (Array.isArray(uiState.teams) ? uiState.teams.map(team => team._id).filter(Boolean) : []) : []
+        };
+      } else {
+        return {
+          ...prev,
+          [name]: type === 'checkbox' ? checked : 
+                  type === 'number' ? parseFloat(value) || 0 : value
+        };
+      }
+    });
+    
+    // ASYNC validation (non-blocking)
+    if (['title', 'description', 'dueDate', 'maxPoints', 'maxAttempts'].includes(name)) {
+      const inputValue = type === 'checkbox' ? checked : value;
+      const error = validateFieldSync(name, inputValue);
+      updateValidationErrors(name, error);
     }
     
-    setValidationErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  }, [validationErrors]);
+    // Clear submit errors when user makes changes
+    if (uiState.errors.submit) {
+      setUiState(prev => ({ 
+        ...prev, 
+        errors: { ...prev.errors, submit: null }
+      }));
+    }
+  }, [uiState.teams, uiState.errors.submit, validateFieldSync, updateValidationErrors]);
 
   // ✅ Enhanced Form Validation
   const validateForm = useCallback(() => {
@@ -447,91 +483,78 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
       newErrors.maxAttempts = 'Maximum attempts must be between 1 and 10';
     }
 
-    if (formData.maxFileSize < 1024 || formData.maxFileSize > 104857600) { // 1KB to 100MB
+    if (formData.maxFileSize < 1024 || formData.maxFileSize > 104857600) {
       newErrors.maxFileSize = 'File size must be between 1KB and 100MB';
     }
 
     return newErrors;
   }, [formData]);
 
-  // ✅ Input Handler with Debouncing
-  const handleInputChange = useCallback((e) => {
-    const { name, value, type, checked } = e.target;
-    
-    setFormData(prev => {
-      let newValue;
-      
-      if (name === 'team') {
-        const currentTeamIds = Array.isArray(prev.team) ? prev.team : [];
-        newValue = {
-          ...prev,
-          team: checked 
-            ? [...currentTeamIds, value]
-            : currentTeamIds.filter(id => id !== value)
-        };
-      } else if (name === 'allowedFileTypes') {
-        const currentFileTypes = Array.isArray(prev.allowedFileTypes) ? prev.allowedFileTypes : [];
-        newValue = {
-          ...prev,
-          allowedFileTypes: checked
-            ? [...currentFileTypes, value]
-            : currentFileTypes.filter(type => type !== value)
-        };
-      } else if (name === 'assignToAll') {
-        newValue = {
-          ...prev,
-          assignToAll: checked,
-          team: checked ? teams.map(team => team._id) : []
-        };
-      } else {
-        newValue = {
-          ...prev,
-          [name]: type === 'checkbox' ? checked : 
-                  type === 'number' ? parseFloat(value) || 0 : value
-        };
-      }
-      
-      // Validate field
-      setTimeout(() => {
-        if (mountedRef.current) {
-          validateField(name, type === 'checkbox' ? checked : value);
-        }
-      }, 300);
-      
-      return newValue;
-    });
-    
-    // Clear submit errors when user makes changes
-    if (errors.submit) {
-      setErrors(prev => ({ ...prev, submit: null }));
-    }
-  }, [teams, errors.submit, validateField]);
-
   // ✅ Enhanced Task Submission
-  const handleSubmit = async (e) => {
+  const handleSubmit = useCallback(async (e) => {
     e.preventDefault();
     
-    if (loading || submitAttempted) return;
+    if (uiState.loading || uiState.submitAttempted) return;
     
-    setSubmitAttempted(true);
-    setLoading(true);
-    setErrors({});
+    setUiState(prev => ({ 
+      ...prev, 
+      submitAttempted: true, 
+      loading: true, 
+      errors: {} 
+    }));
     
     try {
-      // Final validation
       const validationErrors = validateForm();
       if (Object.keys(validationErrors).length > 0) {
-        setErrors(validationErrors);
+        setUiState(prev => ({ ...prev, errors: validationErrors }));
         return;
       }
       
-      // Check network status before submitting
       const isOnline = await checkNetworkStatus();
       if (!isOnline) {
         throw new Error('Network connection unavailable. Please check your internet connection.');
       }
        
-       // Prepare request payload
+       // ✅ FIXED: Backend expects separate tasks for each team, not array
+       const selectedTeams = formData.assignToAll 
+         ? uiState.teams.map(team => team._id) 
+         : Array.isArray(formData.team) ? formData.team : [];
+
+       // Ensure we have valid team IDs
+       const validTeamIds = selectedTeams.filter(id => id && typeof id === 'string' && id.length === 24);
+       
+       console.log('🔍 Team data debug:', {
+         assignToAll: formData.assignToAll,
+         rawTeams: formData.team,
+         selectedTeams: selectedTeams,
+         validTeamIds: validTeamIds,
+         teamsCount: validTeamIds.length
+       });
+
+       if (validTeamIds.length === 0) {
+         throw new Error('No valid teams selected. Please select at least one team.');
+       }
+
+       // ✅ FIXED: Proper null/undefined checks for team data
+       const availableTeams = Array.isArray(uiState.teams) ? uiState.teams : [];
+       const selectedTeamIds = Array.isArray(formData.team) ? formData.team : [];
+       
+      
+       console.log('🔍 Team data debug:', {
+         assignToAll: formData.assignToAll,
+         availableTeams: availableTeams.length,
+         rawFormTeam: formData.team,
+         selectedTeamIds: selectedTeamIds,
+         selectedTeams: selectedTeams,
+         validTeamIds: validTeamIds,
+         teamsCount: validTeamIds.length
+       });
+
+       if (validTeamIds.length === 0) {
+         throw new Error('No valid teams selected. Please select at least one team.');
+       }
+
+       // ✅ FIXED: Send single request with team array (backend will handle multiple teams)
        const requestBody = {
          title: formData.title.trim(),
          description: formData.description.trim(),
@@ -540,7 +563,7 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
          dueDate: formData.dueDate,
          maxPoints: parseInt(formData.maxPoints),
          serverId: serverId,
-         team: formData.assignToAll ? teams.map(team => team._id) : formData.team,
+         team: validTeamIds, // Send as array - backend will create tasks for each team
          assignmentType: formData.assignmentType,
          allowLateSubmissions: formData.allowLateSubmissions,
          maxAttempts: parseInt(formData.maxAttempts),
@@ -553,7 +576,11 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
          notifyStudents: formData.notifyStudents
        };
 
-       console.log('📤 Submitting task:', requestBody);
+       console.log('📤 Submitting task creation request:', {
+         ...requestBody,
+         teamCount: validTeamIds.length,
+         teamIds: validTeamIds
+       });
 
        const response = await fetch(`${API_BASE}/tasks/create`, {
          method: 'POST',
@@ -567,14 +594,48 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
 
        if (!response.ok) {
          const errorText = await response.text();
-         console.error('❌ Task creation failed:', errorText);
-         throw new Error(`Server error (${response.status}): ${errorText}`);
+         console.error('❌ Task creation failed:', {
+           status: response.status,
+           statusText: response.statusText,
+           errorText: errorText
+         });
+         
+         let errorData;
+         try {
+           errorData = JSON.parse(errorText);
+         } catch (parseError) {
+           errorData = { message: errorText };
+         }
+         
+         // Enhanced error handling
+         if (response.status === 400) {
+           if (errorData.message && errorData.message.includes('team')) {
+             throw new Error('Team assignment error: Please ensure you have selected valid teams.');
+           } else if (errorData.message && errorData.message.includes('validation')) {
+             throw new Error(`Validation error: ${errorData.message}`);
+           } else {
+             throw new Error(errorData.message || 'Invalid request data. Please check all fields.');
+           }
+         } else if (response.status === 401) {
+           throw new Error('Authentication failed. Please log in again.');
+         } else if (response.status === 403) {
+           throw new Error('Access denied. You may not have permission to create tasks for this server.');
+         } else if (response.status === 404) {
+           throw new Error('Server not found. Please check your server selection.');
+         } else {
+           throw new Error(`Server error (${response.status}): ${errorData.message || errorText}`);
+         }
        }
 
        const data = await response.json();
-       
+       console.log('✅ Task creation response:', data);
+
        if (data.success) {
-         console.log('🎉 Task created successfully:', data);
+         console.log('🎉 Tasks created successfully:', {
+           totalCreated: data.totalCreated,
+           tasksCreated: data.tasks?.length || 0
+         });
+         
          if (mountedRef.current) {
            onTaskCreated?.(data);
            onClose?.();
@@ -582,7 +643,10 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
        } else {
          console.error('❌ Task creation failed:', data.message);
          if (mountedRef.current) {
-           setErrors({ submit: data.message || 'Failed to create task' });
+           setUiState(prev => ({ 
+             ...prev, 
+             errors: { submit: data.message || 'Failed to create task' }
+           }));
          }
        }
      } catch (error) {
@@ -596,35 +660,40 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
            errorMessage = 'Unable to connect to server. Please check if the server is running.';
          }
          
-         setErrors({ submit: errorMessage });
+         setUiState(prev => ({ 
+           ...prev, 
+           errors: { submit: errorMessage }
+         }));
        }
      } finally {
        if (mountedRef.current) {
-         setLoading(false);
-         setSubmitAttempted(false);
+         setUiState(prev => ({ 
+           ...prev, 
+           loading: false, 
+           submitAttempted: false 
+         }));
        }
      }
-   };
+   }, [uiState.loading, uiState.submitAttempted, uiState.teams, validateForm, checkNetworkStatus, formData, serverId, API_BASE, onTaskCreated, onClose]);
 
    // ✅ Helper Functions
-   const formatFileSize = (bytes) => {
+   const formatFileSize = useCallback((bytes) => {
      if (bytes === 0) return '0 Bytes';
      const k = 1024;
      const sizes = ['Bytes', 'KB', 'MB', 'GB'];
      const i = Math.floor(Math.log(bytes) / Math.log(k));
      return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-   };
+   }, []);
 
-   const getMinDateTime = () => {
+   const getMinDateTime = useCallback(() => {
      const now = new Date();
-     now.setMinutes(now.getMinutes() + 30); // Minimum 30 minutes from now
+     now.setMinutes(now.getMinutes() + 30);
      return now.toISOString().slice(0, 16);
-   };
+   }, []);
 
-   // ✅ Component Sections
+   // ✅ MEMOIZED Components for better performance
 
-   // Header Section
-   const TaskHeader = () => (
+   const TaskHeader = useMemo(() => (
      <div className="flex items-center justify-between p-6 border-b border-gray-200">
        <div className="flex items-center space-x-4">
          <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
@@ -633,27 +702,26 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
          <div>
            <h1 className="text-xl font-semibold text-gray-900">Create New Task</h1>
            <p className="text-gray-600">
-             {serverInfo ? `Server: ${serverInfo.title}` : serverTitle || 'Assign task to teams'}
+             {uiState.serverInfo ? `Server: ${uiState.serverInfo.title}` : serverTitle || 'Assign task to teams'}
            </p>
          </div>
        </div>
        
        <div className="flex items-center space-x-2">
-         {/* Network Status Indicator */}
          <div className="flex items-center space-x-2">
-           {networkStatus === 'online' && (
+           {uiState.networkStatus === 'online' && (
              <div className="flex items-center space-x-1 text-green-600" role="status" aria-label="Online">
                <Wifi className="w-4 h-4" aria-hidden="true" />
                <span className="text-xs">Online</span>
              </div>
            )}
-           {networkStatus === 'offline' && (
+           {uiState.networkStatus === 'offline' && (
              <div className="flex items-center space-x-1 text-red-600" role="status" aria-label="Offline">
                <WifiOff className="w-4 h-4" aria-hidden="true" />
                <span className="text-xs">Offline</span>
              </div>
            )}
-           {networkStatus === 'checking' && (
+           {uiState.networkStatus === 'checking' && (
              <div className="flex items-center space-x-1 text-yellow-600" role="status" aria-label="Checking connection">
                <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
                <span className="text-xs">Checking...</span>
@@ -661,9 +729,9 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
            )}
          </div>
          
-         {teams.length > 0 && (
+         {uiState.teams.length > 0 && (
            <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-medium" role="status">
-             {teams.length} teams available
+             {uiState.teams.length} teams available
            </span>
          )}
          <button
@@ -675,11 +743,10 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
          </button>
        </div>
      </div>
-   );
+   ), [uiState.serverInfo, uiState.networkStatus, uiState.teams.length, serverTitle, onClose]);
 
-   // Network Error Component
-   const NetworkError = () => {
-     if (networkStatus === 'online' && !errors.teams) return null;
+   const NetworkError = useMemo(() => {
+     if (uiState.networkStatus === 'online' && !uiState.errors.teams) return null;
      
      return (
        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg" role="alert">
@@ -688,16 +755,16 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
            <div className="flex-1">
              <h4 className="text-sm font-medium text-red-800">Connection Issue</h4>
              <p className="text-sm text-red-700 mt-1">
-               {errors.teams || 'Unable to connect to the server. Please check your internet connection.'}
+               {uiState.errors.teams || 'Unable to connect to the server. Please check your internet connection.'}
              </p>
              <div className="mt-3 flex items-center space-x-3">
                <button
                  onClick={handleRefreshTeams}
-                 disabled={loadingTeams}
+                 disabled={uiState.loadingTeams}
                  className="flex items-center space-x-2 px-3 py-1 bg-red-100 text-red-800 rounded text-sm hover:bg-red-200 transition-colors disabled:opacity-50"
                  aria-label="Retry connection"
                >
-                 <RefreshCw className={`w-4 h-4 ${loadingTeams ? 'animate-spin' : ''}`} aria-hidden="true" />
+                 <RefreshCw className={`w-4 h-4 ${uiState.loadingTeams ? 'animate-spin' : ''}`} aria-hidden="true" />
                  <span>Retry Connection</span>
                </button>
                
@@ -708,9 +775,9 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
                  Test Network
                </button>
                
-               {fetchAttempts > 0 && (
+               {uiState.fetchAttempts > 0 && (
                  <span className="text-xs text-red-600">
-                   Attempt {fetchAttempts}/{MAX_RETRY_ATTEMPTS}
+                   Attempt {uiState.fetchAttempts}/{MAX_RETRY_ATTEMPTS}
                  </span>
                )}
              </div>
@@ -718,12 +785,12 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
          </div>
        </div>
      );
-   };
+   }, [uiState.networkStatus, uiState.errors.teams, uiState.loadingTeams, uiState.fetchAttempts, handleRefreshTeams, checkNetworkStatus]);
 
-   // ✅ Accessible Basic Information Section
-   const BasicInfoSection = () => (
+   // ✅ OPTIMIZED Basic Information Section
+   const BasicInfoSection = useMemo(() => (
      <div className="space-y-6">
-       <NetworkError />
+       {NetworkError}
        
        <div>
          <h2 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
@@ -742,7 +809,7 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
                name="title"
                value={formData.title}
                onChange={handleInputChange}
-               className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+               className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
                  validationErrors.title ? 'border-red-300' : 'border-gray-300'
                }`}
                placeholder="Enter a clear, descriptive title..."
@@ -772,7 +839,7 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
                value={formData.dueDate}
                onChange={handleInputChange}
                min={getMinDateTime()}
-               className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+               className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
                  validationErrors.dueDate ? 'border-red-300' : 'border-gray-300'
                }`}
                aria-describedby="due-date-error"
@@ -798,7 +865,7 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
                onChange={handleInputChange}
                min="1"
                max="1000"
-               className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+               className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
                  validationErrors.maxPoints ? 'border-red-300' : 'border-gray-300'
                }`}
                aria-describedby="max-points-error"
@@ -817,7 +884,7 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
                <legend className="block text-sm font-medium text-gray-700 mb-2">
                  Priority Level
                </legend>
-               <div className="grid grid-cols-2 md:grid-cols-4 gap-3" role="radiogroup" aria-labelledby="priority-legend">
+               <div className="grid grid-cols-2 md:grid-cols-4 gap-3" role="radiogroup">
                  {priorityOptions.map(option => (
                    <label
                      key={option.value}
@@ -829,16 +896,14 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
                    >
                      <input
                        type="radio"
-                       id={`priority-${option.value}`}
                        name="priority"
                        value={option.value}
                        checked={formData.priority === option.value}
                        onChange={handleInputChange}
                        className="sr-only"
-                       aria-describedby={`priority-${option.value}-label`}
                      />
                      <span className="mr-2" aria-hidden="true">{option.icon}</span>
-                     <span id={`priority-${option.value}-label`} className="text-sm font-medium">
+                     <span className="text-sm font-medium">
                        {option.label}
                      </span>
                    </label>
@@ -857,7 +922,7 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
                value={formData.description}
                onChange={handleInputChange}
                rows={4}
-               className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none ${
+               className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none transition-colors ${
                  validationErrors.description ? 'border-red-300' : 'border-gray-300'
                }`}
                placeholder="Provide a detailed description of the task requirements..."
@@ -878,10 +943,10 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
          </div>
        </div>
      </div>
-   );
+   ), [NetworkError, formData.title, formData.dueDate, formData.maxPoints, formData.priority, formData.description, validationErrors, handleInputChange, priorityOptions, getMinDateTime]);
 
-   // ✅ Accessible Team Assignment Section
-   const TeamAssignmentSection = () => (
+   // ✅ OPTIMIZED Team Assignment Section
+   const TeamAssignmentSection = useMemo(() => (
      <div className="space-y-6">
        <div>
          <div className="flex items-center justify-between mb-4">
@@ -892,37 +957,35 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
            <button
              type="button"
              onClick={handleRefreshTeams}
-             disabled={loadingTeams}
+             disabled={uiState.loadingTeams}
              className="flex items-center space-x-2 px-3 py-1 text-sm text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50"
              aria-label="Refresh teams list"
            >
-             <RefreshCw className={`w-4 h-4 ${loadingTeams ? 'animate-spin' : ''}`} aria-hidden="true" />
+             <RefreshCw className={`w-4 h-4 ${uiState.loadingTeams ? 'animate-spin' : ''}`} aria-hidden="true" />
              <span>Refresh Teams</span>
            </button>
          </div>
          
-         {loadingTeams ? (
+         {uiState.loadingTeams ? (
            <div className="flex items-center justify-center py-12 bg-gray-50 rounded-lg" role="status" aria-live="polite">
              <div className="text-center">
                <Loader2 className="w-8 h-8 animate-spin text-blue-600 mx-auto mb-3" aria-hidden="true" />
                <p className="text-gray-600 mb-2">Loading teams from server...</p>
                <p className="text-sm text-gray-500">
                  This may take a few moments
-                 {fetchAttempts > 1 && ` (Attempt ${fetchAttempts}/${MAX_RETRY_ATTEMPTS})`}
+                 {uiState.fetchAttempts > 1 && ` (Attempt ${uiState.fetchAttempts}/${MAX_RETRY_ATTEMPTS})`}
                </p>
              </div>
            </div>
-         ) : teams.length > 0 ? (
+         ) : uiState.teams.length > 0 ? (
            <div className="space-y-4">
-             {/* Success indicator */}
              <div className="flex items-center p-3 bg-green-50 border border-green-200 rounded-lg" role="status">
                <CheckCircle className="w-5 h-5 text-green-600 mr-2" aria-hidden="true" />
                <span className="text-sm text-green-800">
-                 Successfully loaded {teams.length} teams from server
+                 Successfully loaded {uiState.teams.length} teams from server
                </span>
              </div>
              
-             {/* Assign to All Toggle */}
              <div className="flex items-center p-4 bg-blue-50 border border-blue-200 rounded-lg">
                <input
                  type="checkbox"
@@ -931,70 +994,59 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
                  checked={formData.assignToAll}
                  onChange={handleInputChange}
                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                 aria-describedby="assign-to-all-description"
                />
                <label htmlFor="assign-to-all" className="ml-3 flex items-center cursor-pointer">
                  <UserPlus className="w-4 h-4 text-blue-600 mr-2" aria-hidden="true" />
                  <span className="text-sm font-medium text-blue-900">
-                   Assign to all teams ({teams.length} teams)
+                   Assign to all teams ({uiState.teams.length} teams)
                  </span>
                </label>
-               <span id="assign-to-all-description" className="sr-only">
-                 Select this to automatically assign the task to all {teams.length} teams in this server
-               </span>
              </div>
              
-             {/* Individual Team Selection */}
              {!formData.assignToAll && (
-               <fieldset>
-                 <legend className="sr-only">Select individual teams to assign this task to</legend>
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4" role="group" aria-labelledby="team-selection-heading">
-                   <div id="team-selection-heading" className="sr-only">Individual team selection</div>
-                   {teams.map(team => (
-                     <div
-                       key={team._id}
-                       className={`relative flex items-center p-4 border-2 rounded-lg cursor-pointer transition-all ${
-                         formData.team.includes(team._id)
-                           ? 'border-blue-500 bg-blue-50'
-                           : 'border-gray-200 hover:border-gray-300'
-                       }`}
-                     >
-                       <input
-                         type="checkbox"
-                         id={`team-${team._id}`}
-                         name="team"
-                         value={team._id}
-                         checked={formData.team.includes(team._id)}
-                         onChange={handleInputChange}
-                         className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                         aria-describedby={`team-${team._id}-description`}
-                       />
-                       <label htmlFor={`team-${team._id}`} className="ml-3 flex-1 cursor-pointer">
-                         <div className="flex items-center justify-between">
-                           <p className="text-sm font-medium text-gray-900">{team.name}</p>
-                           <span className="text-xs text-gray-500" aria-label={`${team.members?.length || 0} members`}>
-                             {team.members?.length || 0} members
-                           </span>
-                         </div>
-                         <p id={`team-${team._id}-description`} className="text-xs text-gray-600 mt-1">
-                           {team.description || 'No description available'}
-                         </p>
-                       </label>
-                       {formData.team.includes(team._id) && (
-                         <CheckCircle className="w-5 h-5 text-blue-600 absolute top-2 right-2" aria-hidden="true" />
-                       )}
-                     </div>
-                   ))}
-                 </div>
-               </fieldset>
+               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                 {uiState.teams.map(team => (
+                   <div
+                     key={team._id}
+                     className={`relative flex items-center p-4 border-2 rounded-lg cursor-pointer transition-all ${
+                       formData.team.includes(team._id)
+                         ? 'border-blue-500 bg-blue-50'
+                         : 'border-gray-200 hover:border-gray-300'
+                     }`}
+                   >
+                     <input
+                       type="checkbox"
+                       id={`team-${team._id}`}
+                       name="team"
+                       value={team._id}
+                       checked={formData.team.includes(team._id)}
+                       onChange={handleInputChange}
+                       className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                     />
+                     <label htmlFor={`team-${team._id}`} className="ml-3 flex-1 cursor-pointer">
+                       <div className="flex items-center justify-between">
+                         <p className="text-sm font-medium text-gray-900">{team.name}</p>
+                         <span className="text-xs text-gray-500">
+                           {team.members?.length || 0} members
+                         </span>
+                       </div>
+                       <p className="text-xs text-gray-600 mt-1">
+                         {team.description || 'No description available'}
+                       </p>
+                     </label>
+                     {formData.team.includes(team._id) && (
+                       <CheckCircle className="w-5 h-5 text-blue-600 absolute top-2 right-2" aria-hidden="true" />
+                     )}
+                   </div>
+                 ))}
+               </div>
              )}
              
-             {/* Selection Summary */}
              <div className="p-3 bg-gray-50 rounded-lg" role="status" aria-live="polite">
                <p className="text-sm text-gray-600">
                  {formData.assignToAll 
-                   ? `Task will be assigned to all ${teams.length} teams`
-                   : `Selected ${formData.team.length} of ${teams.length} teams`
+                   ? `Task will be assigned to all ${uiState.teams.length} teams`
+                   : `Selected ${formData.team.length} of ${uiState.teams.length} teams`
                  }
                </p>
              </div>
@@ -1004,21 +1056,20 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
              <Users className="w-16 h-16 text-gray-300 mx-auto mb-4" aria-hidden="true" />
              <h3 className="text-lg font-medium text-gray-600 mb-2">No Teams Available</h3>
              <p className="text-gray-500 mb-4">
-               {errors.teams || 'No teams found in this server. Students need to create teams before you can assign tasks.'}
+               {uiState.errors.teams || 'No teams found in this server. Students need to create teams before you can assign tasks.'}
              </p>
              <div className="space-y-2">
                <button
                  type="button"
                  onClick={handleRefreshTeams}
-                 disabled={loadingTeams}
+                 disabled={uiState.loadingTeams}
                  className="inline-flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
-                 aria-label="Retry loading teams"
                >
-                 <RefreshCw className={`w-4 h-4 ${loadingTeams ? 'animate-spin' : ''}`} aria-hidden="true" />
+                 <RefreshCw className={`w-4 h-4 ${uiState.loadingTeams ? 'animate-spin' : ''}`} aria-hidden="true" />
                  <span>Retry Loading Teams</span>
                </button>
                
-               {networkStatus === 'offline' && (
+               {uiState.networkStatus === 'offline' && (
                  <p className="text-sm text-red-600" role="alert">
                    ⚠️ Network connection issue detected. Please check your internet connection.
                  </p>
@@ -1028,10 +1079,10 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
          )}
        </div>
      </div>
-   );
+   ), [uiState.teams, uiState.loadingTeams, uiState.fetchAttempts, uiState.errors.teams, uiState.networkStatus, formData.assignToAll, formData.team, handleInputChange, handleRefreshTeams]);
 
-   // ✅ Accessible File Upload Section
-   const FileUploadSection = () => (
+   // ✅ OPTIMIZED File Upload Section
+   const FileUploadSection = useMemo(() => (
      <div className="space-y-6">
        <div>
          <h2 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
@@ -1040,7 +1091,6 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
          </h2>
          
          <div className="space-y-4">
-           {/* Allow File Upload Toggle */}
            <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
              <div>
                <label htmlFor="allow-file-upload" className="text-sm font-medium text-gray-900 cursor-pointer">
@@ -1056,27 +1106,21 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
                  checked={formData.allowFileUpload}
                  onChange={handleInputChange}
                  className="sr-only peer"
-                 aria-describedby="file-upload-description"
                />
                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-               <span id="file-upload-description" className="sr-only">
-                 Toggle to {formData.allowFileUpload ? 'disable' : 'enable'} file uploads for this task
-               </span>
              </div>
            </div>
            
            {formData.allowFileUpload && (
              <>
-               {/* File Types */}
                <fieldset>
                  <legend className="block text-sm font-medium text-gray-700 mb-3">
                    Allowed File Types *
                  </legend>
-                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3" role="group">
+                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                    {fileTypeOptions.map(option => (
                      <label
                        key={option.value}
-                       htmlFor={`filetype-${option.value}`}
                        className={`flex items-center p-3 border rounded-lg cursor-pointer transition-colors ${
                          formData.allowedFileTypes.includes(option.value)
                            ? 'border-blue-500 bg-blue-50'
@@ -1085,16 +1129,14 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
                      >
                        <input
                          type="checkbox"
-                         id={`filetype-${option.value}`}
                          name="allowedFileTypes"
                          value={option.value}
                          checked={formData.allowedFileTypes.includes(option.value)}
                          onChange={handleInputChange}
                          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                         aria-describedby={`filetype-${option.value}-label`}
                        />
                        <span className="ml-2 mr-1" aria-hidden="true">{option.icon}</span>
-                       <span id={`filetype-${option.value}-label`} className="text-xs font-medium">
+                       <span className="text-xs font-medium">
                          {option.label}
                        </span>
                      </label>
@@ -1107,7 +1149,6 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
                  )}
                </fieldset>
                
-               {/* File Size Limit */}
                <div>
                  <label htmlFor="max-file-size" className="block text-sm font-medium text-gray-700 mb-2">
                    Maximum File Size
@@ -1118,7 +1159,6 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
                    value={formData.maxFileSize}
                    onChange={handleInputChange}
                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                   aria-describedby="file-size-description"
                  >
                    <option value={1048576}>1 MB</option>
                    <option value={5242880}>5 MB</option>
@@ -1127,7 +1167,7 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
                    <option value={52428800}>50 MB</option>
                    <option value={104857600}>100 MB</option>
                  </select>
-                 <p id="file-size-description" className="mt-1 text-xs text-gray-500">
+                 <p className="mt-1 text-xs text-gray-500">
                    Current limit: {formatFileSize(formData.maxFileSize)}
                  </p>
                </div>
@@ -1136,32 +1176,30 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
          </div>
        </div>
      </div>
-   );
+   ), [formData.allowFileUpload, formData.allowedFileTypes, formData.maxFileSize, fileTypeOptions, validationErrors.allowedFileTypes, handleInputChange, formatFileSize]);
 
-   // ✅ Accessible Advanced Settings Section
-   const AdvancedSettingsSection = () => (
+   // ✅ OPTIMIZED Advanced Settings Section
+   const AdvancedSettingsSection = useMemo(() => (
      <div className="space-y-6">
        <button
          type="button"
-         onClick={() => setShowAdvanced(!showAdvanced)}
+         onClick={() => setUiState(prev => ({ ...prev, showAdvanced: !prev.showAdvanced }))}
          className="flex items-center justify-between w-full text-left focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-lg p-2"
-         aria-expanded={showAdvanced}
-         aria-controls="advanced-settings-content"
+         aria-expanded={uiState.showAdvanced}
        >
          <h2 className="text-lg font-medium text-gray-900 flex items-center">
            <Settings className="w-5 h-5 mr-2 text-gray-600" aria-hidden="true" />
            Advanced Settings
          </h2>
-         <div className={`transform transition-transform ${showAdvanced ? 'rotate-180' : ''}`}>
+         <div className={`transform transition-transform ${uiState.showAdvanced ? 'rotate-180' : ''}`}>
            <svg className="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
            </svg>
          </div>
        </button>
        
-       {showAdvanced && (
-         <div id="advanced-settings-content" className="space-y-6 pl-7">
-           {/* Instructions */}
+       {uiState.showAdvanced && (
+         <div className="space-y-6 pl-7">
            <div>
              <label htmlFor="task-instructions" className="block text-sm font-medium text-gray-700 mb-2">
                Detailed Instructions
@@ -1174,14 +1212,9 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
                rows={3}
                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
                placeholder="Provide step-by-step instructions for students..."
-               aria-describedby="instructions-help"
              />
-             <p id="instructions-help" className="mt-1 text-xs text-gray-500">
-               Optional: Provide detailed step-by-step instructions
-             </p>
            </div>
            
-           {/* Rubric */}
            <div>
              <label htmlFor="task-rubric" className="block text-sm font-medium text-gray-700 mb-2">
                Grading Rubric
@@ -1194,14 +1227,9 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
                rows={3}
                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
                placeholder="Define grading criteria and point distribution..."
-               aria-describedby="rubric-help"
              />
-             <p id="rubric-help" className="mt-1 text-xs text-gray-500">
-               Optional: Define how the task will be graded
-             </p>
            </div>
            
-           {/* Submission Settings */}
            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
              <div>
                <label htmlFor="max-attempts" className="block text-sm font-medium text-gray-700 mb-2">
@@ -1218,17 +1246,12 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
                    validationErrors.maxAttempts ? 'border-red-300' : 'border-gray-300'
                  }`}
-                 aria-describedby="max-attempts-error max-attempts-help"
-                 aria-invalid={validationErrors.maxAttempts ? 'true' : 'false'}
                />
                {validationErrors.maxAttempts && (
-                 <p id="max-attempts-error" className="mt-1 text-sm text-red-600" role="alert">
+                 <p className="mt-1 text-sm text-red-600" role="alert">
                    {validationErrors.maxAttempts}
                  </p>
                )}
-               <p id="max-attempts-help" className="mt-1 text-xs text-gray-500">
-                 How many times students can submit
-               </p>
              </div>
              
              <div className="flex items-center">
@@ -1239,18 +1262,13 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
                  checked={formData.allowLateSubmissions}
                  onChange={handleInputChange}
                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                 aria-describedby="late-submissions-help"
                />
                <label htmlFor="allow-late-submissions" className="ml-2 text-sm text-gray-700 cursor-pointer">
                  Allow late submissions
                </label>
-               <p id="late-submissions-help" className="sr-only">
-                 Check this to allow students to submit after the due date
-               </p>
              </div>
            </div>
            
-           {/* Notification Settings */}
            <fieldset>
              <legend className="text-sm font-medium text-gray-700 mb-3">Notification Settings</legend>
              <div className="space-y-3">
@@ -1262,14 +1280,10 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
                    checked={formData.publishImmediately}
                    onChange={handleInputChange}
                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                   aria-describedby="publish-help"
                  />
                  <label htmlFor="publish-immediately" className="ml-2 text-sm text-gray-700 cursor-pointer">
                    Publish task immediately
                  </label>
-                 <p id="publish-help" className="sr-only">
-                   Make the task visible to students right away
-                 </p>
                </div>
                
                <div className="flex items-center">
@@ -1280,14 +1294,10 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
                    checked={formData.notifyStudents}
                    onChange={handleInputChange}
                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                   aria-describedby="notify-help"
                  />
                  <label htmlFor="notify-students" className="ml-2 text-sm text-gray-700 cursor-pointer">
                    Send notifications to students
                  </label>
-                 <p id="notify-help" className="sr-only">
-                   Send email/push notifications to assigned students
-                 </p>
                </div>
                
                <div className="flex items-center">
@@ -1298,35 +1308,37 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
                    checked={formData.autoGrade}
                    onChange={handleInputChange}
                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                   aria-describedby="auto-grade-help"
                  />
                  <label htmlFor="auto-grade" className="ml-2 text-sm text-gray-700 cursor-pointer">
                    Enable auto-grading (when available)
                  </label>
-                 <p id="auto-grade-help" className="sr-only">
-                   Automatically grade submissions if auto-grading is supported for this task type
-                 </p>
                </div>
              </div>
            </fieldset>
          </div>
        )}
      </div>
-   );
+   ), [uiState.showAdvanced, formData.instructions, formData.rubric, formData.maxAttempts, formData.allowLateSubmissions, formData.publishImmediately, formData.notifyStudents, formData.autoGrade, validationErrors.maxAttempts, handleInputChange]);
 
-   // Submit Section - FIXED VALIDATION
-   const SubmitSection = () => {
-     // ✅ FIXED: Proper team validation for submit button
-     const hasValidTeams = formData.assignToAll ? teams.length > 0 : (Array.isArray(formData.team) ? formData.team.length > 0 : false);
-     const canSubmit = teams.length > 0 && hasValidTeams && networkStatus !== 'offline';
+   // ✅ OPTIMIZED Submit Section
+   const SubmitSection = useMemo(() => {
+     // ✅ FIXED: Proper null checks for team validation
+     const availableTeams = Array.isArray(uiState.teams) ? uiState.teams : [];
+     const selectedTeamIds = Array.isArray(formData.team) ? formData.team : [];
+     
+     const hasValidTeams = formData.assignToAll 
+       ? availableTeams.length > 0 
+       : selectedTeamIds.length > 0;
+       
+     const canSubmit = availableTeams.length > 0 && hasValidTeams && uiState.networkStatus !== 'offline';
      
      return (
        <div className="flex items-center justify-between pt-6 border-t border-gray-200">
          <div className="text-sm text-gray-600">
-           {teams.length > 0 ? (
+           {availableTeams.length > 0 ? (
              formData.assignToAll 
-              ? `Ready to assign to all ${teams.length} teams`
-               : `Selected ${Array.isArray(formData.team) ? formData.team.length : 0} teams`
+              ? `Ready to assign to all ${availableTeams.length} teams`
+               : `Selected ${selectedTeamIds.length} teams`
            ) : (
              <span className="text-red-600" role="alert">⚠️ No teams available - cannot create task</span>
            )}
@@ -1336,20 +1348,18 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
            <button
              type="button"
              onClick={onClose}
-             disabled={loading}
+             disabled={uiState.loading}
              className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
-             aria-label="Cancel task creation"
            >
              Cancel
            </button>
            
            <button
              type="submit"
-             disabled={loading || !canSubmit}
+             disabled={uiState.loading || !canSubmit}
              className="flex items-center space-x-2 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-             aria-describedby="submit-button-status"
            >
-             {loading ? (
+             {uiState.loading ? (
                <>
                  <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
                  <span>Creating Task...</span>
@@ -1361,44 +1371,39 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
                </>
              )}
            </button>
-           <span id="submit-button-status" className="sr-only">
-             {loading ? 'Creating task, please wait' : 
-              !canSubmit ? 'Cannot create task - check team selection and network status' :
-              'Ready to create task'}
-           </span>
          </div>
        </div>
      );
-   };
+   }, [uiState.teams, uiState.loading, uiState.networkStatus, formData.assignToAll, formData.team, onClose]);
 
-   // Main Render
+   // ✅ Main Render
    return (
-     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" role="dialog" aria-labelledby="task-creator-title" aria-modal="true">
+     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" role="dialog" aria-modal="true">
        <div className="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-         <TaskHeader />
+         {TaskHeader}
          
          <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0" noValidate>
            <div className="flex-1 overflow-y-auto p-6 space-y-8" style={{ maxHeight: 'calc(90vh - 200px)' }}>
-             {errors.submit && (
+             {uiState.errors.submit && (
                <div className="p-4 bg-red-50 border border-red-200 rounded-lg" role="alert">
                  <div className="flex items-start space-x-2">
                    <AlertCircle className="w-5 h-5 text-red-500 mt-0.5" aria-hidden="true" />
                    <div>
                      <p className="text-sm text-red-800 font-medium">Task Creation Failed</p>
-                     <p className="text-sm text-red-700 mt-1">{errors.submit}</p>
+                     <p className="text-sm text-red-700 mt-1">{uiState.errors.submit}</p>
                    </div>
                  </div>
                </div>
              )}
              
-             <BasicInfoSection />
-             <TeamAssignmentSection />
-             <FileUploadSection />
-             <AdvancedSettingsSection />
+             {BasicInfoSection}
+             {TeamAssignmentSection}
+             {FileUploadSection}
+             {AdvancedSettingsSection}
            </div>
            
            <div className="border-t border-gray-200 p-6 bg-gray-50 flex-shrink-0">
-             <SubmitSection />
+             {SubmitSection}
            </div>
          </form>
        </div>
@@ -1406,13 +1411,4 @@ const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
    );
  };
 
- // ✅ Wrap with React.memo to prevent unnecessary re-renders
- export default React.memo(TaskCreator, (prevProps, nextProps) => {
-   // Only re-render if serverId, serverTitle, or show state changes
-   return (
-     prevProps.serverId === nextProps.serverId &&
-     prevProps.serverTitle === nextProps.serverTitle &&
-     prevProps.onTaskCreated === nextProps.onTaskCreated &&
-     prevProps.onClose === nextProps.onClose
-   );
- });
+ export default React.memo(TaskCreator);
