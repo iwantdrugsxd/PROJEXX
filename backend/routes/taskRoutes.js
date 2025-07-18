@@ -1,6 +1,7 @@
 // backend/routes/taskRoutes.js - PRODUCTION ENHANCED VERSION
 const express = require('express');
 const router = express.Router();
+const mongoose = require('mongoose');
 const Task = require('../models/taskSchema');
 const StudentTeam = require('../models/studentTeamSchema');
 const Student = require('../models/studentSchema');
@@ -302,8 +303,7 @@ router.post('/create', createTaskLimit, verifyToken, async (req, res) => {
       maxPoints: maxPointsNum,
       faculty: req.user.id,
       server: serverId,
-      team: team[0], // Primary team for compatibility
-      team: team, // All assigned teams
+      team: team,
       assignmentType: assignmentType || 'team',
       allowLateSubmissions: Boolean(allowLateSubmissions),
       maxAttempts: Math.min(Math.max(parseInt(maxAttempts) || 1, 1), 10),
@@ -583,20 +583,16 @@ router.get('/student-tasks', verifyToken, async (req, res) => {
       });
     }
 
-    const team = studentTeams.map(team => team._id);
-    console.log(`👥 Student is in ${team.length} teams`);
+    const teamIds = studentTeams.map(team => team._id);
+    console.log(`👥 Student is in ${teamIds.length} teams`);
 
     // Find tasks assigned to student's teams
     const tasks = await Task.find({
-      $or: [
-        { team: { $in: team } },
-        { team: { $in: team } } // Backward compatibility
-      ],
+      team: { $in: teamIds },
       status: { $ne: 'draft' } // Only published tasks
     })
     .populate('server', 'title code')
     .populate('team', 'name')
-    .populate('team', 'name') // Backward compatibility
     .populate('faculty', 'firstName lastName')
     .sort({ createdAt: -1 });
 
@@ -633,7 +629,7 @@ router.get('/student-tasks', verifyToken, async (req, res) => {
       success: true, 
       tasks: tasksWithStatus,
       count: tasksWithStatus.length,
-      teamsCount: team.length
+      teamsCount: teamIds.length
     });
 
   } catch (error) {
@@ -657,7 +653,6 @@ router.get('/faculty-tasks', verifyToken, async (req, res) => {
 
     console.log(`📋 Fetching tasks for faculty: ${req.user.id}`);
 
-    // ✅ FIX: Properly define tasks variable
     const tasks = await Task.find({ faculty: req.user.id })
       .populate('server', 'title code')
       .populate('team', 'name members')
@@ -679,6 +674,7 @@ router.get('/faculty-tasks', verifyToken, async (req, res) => {
     });
   }
 });
+
 // ✅ Enhanced get server tasks with teams
 router.get('/server/:serverId', verifyToken, async (req, res) => {
   try {
@@ -724,7 +720,6 @@ router.get('/server/:serverId', verifyToken, async (req, res) => {
 
     const tasks = await Task.find(query)
       .populate('team', 'name members')
-      .populate('team', 'name members') // Backward compatibility
       .populate('faculty', 'firstName lastName')
       .sort({ createdAt: -1 });
 
@@ -776,53 +771,88 @@ router.get('/server/:serverId', verifyToken, async (req, res) => {
   }
 });
 
-// ✅ Enhanced get teams for server
 // ✅ Get teams for server (for task creation)
-
 router.get('/server/:serverId/teams', verifyToken, async (req, res) => {
   try {
     const { serverId } = req.params;
+    console.log(`👥 Faculty ${req.user.id} requesting teams for server: ${serverId}`);
+
+    let server;
     
-    console.log(`👥 Loading teams for server: ${serverId}`);
-    
-    const server = await ProjectServer.findById(serverId);
+    if (mongoose.Types.ObjectId.isValid(serverId)) {
+      server = await ProjectServer.findById(serverId);
+    } else {
+      server = await ProjectServer.findOne({ code: serverId.toUpperCase() });
+    }
+
     if (!server) {
-      return res.status(404).json({ 
-        message: 'Server not found',
-        success: false 
+      console.log(`❌ Server not found: ${serverId}`);
+      return res.status(404).json({
+        success: false,
+        message: 'Project server not found',
+        teams: []
       });
     }
 
-    // Verify faculty access
+    console.log(`✅ Found server: ${server.title} (${server.code})`);
+
+    // Check permissions - only server owner can view teams for task assignment
     if (req.user.role !== 'faculty' || server.faculty.toString() !== req.user.id) {
       return res.status(403).json({
         success: false,
-        message: 'Only the server owner can view teams for task assignment'
+        message: 'Only the server owner can view teams for task assignment',
+        teams: []
       });
     }
 
-    // Find teams for this server with enhanced data
+    // Find teams using server CODE (not _id)
     const teams = await StudentTeam.find({ 
-      projectServer: server.code 
+      projectServer: server.code
     })
-    .populate('members', 'student.firstName lastName email')
+    .populate('members', 'firstName lastName email')
+    .populate('creator', 'firstName lastName email')
     .sort({ createdAt: -1 });
 
     console.log(`👥 Found ${teams.length} teams for server ${server.title}`);
 
+    // Enhanced team data for task assignment
+    const enhancedTeams = teams.map(team => ({
+      _id: team._id,
+      name: team.name,
+      description: team.description || '',
+      members: team.members,
+      creator: team.creator,
+      memberCount: team.members.length,
+      projectServer: team.projectServer,
+      createdAt: team.createdAt,
+      stats: {
+        totalMembers: team.members.length,
+        isActive: team.status === 'active'
+      }
+    }));
+
     res.json({ 
       success: true, 
-      teams: teams || [],
+      teams: enhancedTeams,
+      server: {
+        _id: server._id,
+        code: server.code,
+        title: server.title,
+        description: server.description
+      },
       serverTitle: server.title,
       serverCode: server.code,
-      count: teams.length
+      count: enhancedTeams.length,
+      message: enhancedTeams.length === 0 ? 'No teams found. Students need to create teams first.' : `Found ${enhancedTeams.length} teams`
     });
 
   } catch (error) {
     console.error('❌ Error fetching server teams:', error);
     res.status(500).json({ 
       message: 'Failed to fetch teams',
-      success: false 
+      success: false,
+      teams: [],
+      error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message
     });
   }
 });
@@ -835,11 +865,17 @@ router.get('/:taskId', verifyToken, async (req, res) => {
     console.log(`📋 Getting task details for: ${taskId}`);
     
     const task = await Task.findById(taskId)
-      .populate('team', 'name members')
-      .populate('team', 'name members') // Backward compatibility
-      .populate('server', 'title code')
+      .populate('team', 'name members projectServer description')
+      .populate('server', 'title code description')
       .populate('faculty', 'firstName lastName email')
-      .populate('submissions.student', 'firstName lastName email');
+      .populate('submissions.student', 'firstName lastName email')
+      .populate({
+        path: 'team',
+        populate: {
+          path: 'members',
+          select: 'firstName lastName email'
+        }
+      });
 
     if (!task) {
       return res.status(404).json({ 
@@ -848,540 +884,493 @@ router.get('/:taskId', verifyToken, async (req, res) => {
       });
     }
 
-    // Check access permissions
+    // Enhanced access control
     let hasAccess = false;
-    let canViewSubmissions = false;
 
-    if (req.user.role === 'faculty' && task.faculty._id.toString() === req.user.id) {
-      hasAccess = true;
-      canViewSubmissions = true;
+    if (req.user.role === 'faculty') {
+      hasAccess = task.faculty._id.toString() === req.user.id;
     } else if (req.user.role === 'student') {
-      // Check if student is assigned to this task
-      const studentTeams = await StudentTeam.find({
-        _id: { $in: task.team.map(t => t._id) },
-        members: req.user.id
-      });
-      
-      if (studentTeams.length > 0 && task.status !== 'draft') {
-        hasAccess = true;
-        // Students can only view their own submissions
-        canViewSubmissions = false;
+      if (task.assignmentType === 'team' && task.team) {
+        hasAccess = task.team.members.some(member => member._id.toString() === req.user.id);
+      } else if (task.assignmentType === 'individual') {
+        hasAccess = task.student && task.student.toString() === req.user.id;
       }
     }
 
     if (!hasAccess) {
-      return res.status(403).json({
-        success: false,
-        message: 'Access denied to this task'
+      return res.status(403).json({ 
+        message: 'Access denied. You do not have permission to view this task.',
+        success: false 
       });
     }
 
-    const taskObj = task.toObject();
+    // Enhanced task data with better server/team info
+    const enhancedTask = {
+      ...task.toObject(),
+      serverInfo: {
+        _id: task.server._id,
+        title: task.server.title,
+        code: task.server.code,
+        description: task.server.description
+      },
+      teamInfo: task.team ? {
+        _id: task.team._id,
+        name: task.team.name,
+        members: task.team.members,
+        projectServer: task.team.projectServer,
+        memberCount: task.team.members.length
+      } : null
+    };
 
-    // Filter submissions based on permissions
-    if (!canViewSubmissions) {
-      // Student can only see their own submission
-      taskObj.submissions = task.submissions?.filter(sub => 
-        sub.student._id.toString() === req.user.id
-      ) || [];
-    }
-
-    // Add task statistics for faculty
-    if (req.user.role === 'faculty') {
-      const submissions = task.submissions || [];
-      const totalStudents = task.team.reduce((total, team) => 
-        total + (team.members?.length || 0), 0);
-
-      taskObj.statistics = {
-        totalSubmissions: submissions.length,
-        uniqueSubmissions: new Set(submissions.map(s => s.student._id.toString())).size,
-        totalStudents: totalStudents,
-        submissionRate: totalStudents > 0 ? 
-          Math.round((new Set(submissions.map(s => s.student._id.toString())).size / totalStudents) * 100) : 0,
-        gradedSubmissions: submissions.filter(s => s.grade !== undefined).length,
-        averageGrade: submissions.filter(s => s.grade !== undefined).length > 0 ?
-          Math.round(submissions.filter(s => s.grade !== undefined)
-            .reduce((sum, s) => sum + s.grade, 0) / 
-            submissions.filter(s => s.grade !== undefined).length * 100) / 100 : null,
-        lateSubmissions: submissions.filter(s => s.isLate).length,
-        pendingGrades: submissions.filter(s => s.status === 'submitted' && s.grade === undefined).length
-      };
-    }
-
-    // Add submission status for students
-    if (req.user.role === 'student') {
-      const studentSubmission = task.submissions?.find(sub => 
-        sub.student._id.toString() === req.user.id
-      );
-
-      taskObj.submissionStatus = studentSubmission ? {
-        submitted: true,
-        submittedAt: studentSubmission.submittedAt,
-        status: studentSubmission.status,
-        grade: studentSubmission.grade,
-        feedback: studentSubmission.feedback,
-        attempt: studentSubmission.attempt,
-        isLate: studentSubmission.isLate,
-        canResubmit: studentSubmission.attempt < task.maxAttempts &&
-                     (task.allowLateSubmissions || new Date() <= new Date(task.dueDate))
-      } : {
-        submitted: false,
-        canSubmit: task.status === 'active' && 
-                   (task.allowLateSubmissions || new Date() <= new Date(task.dueDate)),
-        attemptsRemaining: task.maxAttempts
-      };
-    }
+    console.log(`✅ Task details loaded successfully for: ${task.title}`);
 
     res.json({
       success: true,
-      task: taskObj
+      task: enhancedTask,
+      message: 'Task details loaded successfully'
     });
 
   } catch (error) {
-    console.error('❌ Error fetching task details:', error);
+    console.error('❌ Error fetching task:', error);
     res.status(500).json({ 
-      message: 'Failed to fetch task details',
-      success: false 
-    });
-  }
+     message: 'Failed to fetch task details',
+     success: false,
+     error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message
+   });
+ }
 });
 
 // ✅ Enhanced task grading
 router.post('/:taskId/grade/:studentId', verifyToken, async (req, res) => {
-  try {
-    if (req.user.role !== 'faculty') {
-      return res.status(403).json({ 
-        message: 'Only faculty can grade submissions',
-        success: false 
-      });
-    }
+ try {
+   if (req.user.role !== 'faculty') {
+     return res.status(403).json({ 
+       message: 'Only faculty can grade submissions',
+       success: false 
+     });
+   }
 
-    const { taskId, studentId } = req.params;
-    const { grade, feedback } = req.body;
+   const { taskId, studentId } = req.params;
+   const { grade, feedback } = req.body;
 
-    console.log(`📊 Grading task ${taskId} for student ${studentId}`);
+   console.log(`📊 Grading task ${taskId} for student ${studentId}`);
 
-    // Validate grade
-    const gradeNum = parseFloat(grade);
-    if (isNaN(gradeNum) || gradeNum < 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Grade must be a valid number >= 0'
-      });
-    }
+   // Validate grade
+   const gradeNum = parseFloat(grade);
+   if (isNaN(gradeNum) || gradeNum < 0) {
+     return res.status(400).json({
+       success: false,
+       message: 'Grade must be a valid number >= 0'
+     });
+   }
 
-    const task = await Task.findById(taskId);
-    if (!task) {
-      return res.status(404).json({ 
-        message: 'Task not found',
-        success: false 
-      });
-    }
+   const task = await Task.findById(taskId);
+   if (!task) {
+     return res.status(404).json({ 
+       message: 'Task not found',
+       success: false 
+     });
+   }
 
-    // Verify faculty owns this task
-    if (task.faculty.toString() !== req.user.id) {
-      return res.status(403).json({ 
-        message: 'You can only grade your own tasks',
-        success: false 
-      });
-    }
+   // Verify faculty owns this task
+   if (task.faculty.toString() !== req.user.id) {
+     return res.status(403).json({ 
+       message: 'You can only grade your own tasks',
+       success: false 
+     });
+   }
 
-    // Validate grade doesn't exceed max points
-    if (gradeNum > task.maxPoints) {
-      return res.status(400).json({
-        success: false,
-        message: `Grade cannot exceed maximum points (${task.maxPoints})`
-      });
-    }
+   // Validate grade doesn't exceed max points
+   if (gradeNum > task.maxPoints) {
+     return res.status(400).json({
+       success: false,
+       message: `Grade cannot exceed maximum points (${task.maxPoints})`
+     });
+   }
 
-    // Find the submission
-    const submissionIndex = task.submissions.findIndex(sub => 
-      sub.student.toString() === studentId
-    );
+   // Find the submission
+   const submissionIndex = task.submissions.findIndex(sub => 
+     sub.student.toString() === studentId
+   );
 
-    if (submissionIndex === -1) {
-      return res.status(404).json({ 
-        message: 'Student submission not found',
-        success: false 
-      });
-    }
+   if (submissionIndex === -1) {
+     return res.status(404).json({ 
+       message: 'Student submission not found',
+       success: false 
+     });
+   }
 
-    // Update the submission
-    task.submissions[submissionIndex].grade = gradeNum;
-    task.submissions[submissionIndex].feedback = feedback?.trim() || '';
-    task.submissions[submissionIndex].status = 'graded';
-    task.submissions[submissionIndex].gradedAt = new Date();
-    task.submissions[submissionIndex].gradedBy = req.user.id;
-    task.updatedAt = new Date();
+   // Update the submission
+   task.submissions[submissionIndex].grade = gradeNum;
+   task.submissions[submissionIndex].feedback = feedback?.trim() || '';
+   task.submissions[submissionIndex].status = 'graded';
+   task.submissions[submissionIndex].gradedAt = new Date();
+   task.submissions[submissionIndex].gradedBy = req.user.id;
+   task.updatedAt = new Date();
 
-    await task.save();
+   await task.save();
 
-    console.log(`✅ Task graded: ${gradeNum}/${task.maxPoints}`);
+   console.log(`✅ Task graded: ${gradeNum}/${task.maxPoints}`);
 
-    // TODO: Send notification to student
+   res.json({
+     success: true,
+     message: 'Task graded successfully',
+     grading: {
+       grade: gradeNum,
+       maxPoints: task.maxPoints,
+       percentage: Math.round((gradeNum / task.maxPoints) * 100),
+       feedback: feedback?.trim() || '',
+       gradedAt: task.submissions[submissionIndex].gradedAt
+     }
+   });
 
-    res.json({
-      success: true,
-      message: 'Task graded successfully',
-      grading: {
-        grade: gradeNum,
-        maxPoints: task.maxPoints,
-        percentage: Math.round((gradeNum / task.maxPoints) * 100),
-        feedback: feedback?.trim() || '',
-        gradedAt: task.submissions[submissionIndex].gradedAt
-      }
-    });
-
-  } catch (error) {
-    console.error('❌ Grade task error:', error);
-    res.status(500).json({ 
-      message: error.message || 'Failed to grade task',
-      success: false 
-    });
-  }
+ } catch (error) {
+   console.error('❌ Grade task error:', error);
+   res.status(500).json({ 
+     message: error.message || 'Failed to grade task',
+     success: false 
+   });
+ }
 });
 
 // ✅ Enhanced get task submissions (for faculty)
 router.get('/:taskId/submissions', verifyToken, async (req, res) => {
-  try {
-    if (req.user.role !== 'faculty') {
-      return res.status(403).json({ 
-        message: 'Only faculty can view all submissions',
-        success: false 
-      });
-    }
+ try {
+   if (req.user.role !== 'faculty') {
+     return res.status(403).json({ 
+       message: 'Only faculty can view all submissions',
+       success: false 
+     });
+   }
 
-    const { taskId } = req.params;
-    const { status, team, sortBy = 'submittedAt', order = 'desc' } = req.query;
+   const { taskId } = req.params;
+   const { status, team, sortBy = 'submittedAt', order = 'desc' } = req.query;
 
-    const task = await Task.findById(taskId)
-      .populate('submissions.student', 'firstName lastName email')
-      .populate('team', 'name members')
-      .populate('team', 'name members'); // Backward compatibility
+   const task = await Task.findById(taskId)
+     .populate('submissions.student', 'firstName lastName email')
+     .populate('team', 'name members');
 
-    if (!task) {
-      return res.status(404).json({ 
-        message: 'Task not found',
-        success: false 
-      });
-    }
+   if (!task) {
+     return res.status(404).json({ 
+       message: 'Task not found',
+       success: false 
+     });
+   }
 
-    if (task.faculty.toString() !== req.user.id) {
-      return res.status(403).json({ 
-        message: 'You can only view submissions for your own tasks',
-        success: false 
-      });
-    }
+   if (task.faculty.toString() !== req.user.id) {
+     return res.status(403).json({ 
+       message: 'You can only view submissions for your own tasks',
+       success: false 
+     });
+   }
 
-    let submissions = task.submissions || [];
+   let submissions = task.submissions || [];
 
-    // Apply filters
-    if (status && status !== 'all') {
-      submissions = submissions.filter(sub => sub.status === status);
-    }
+   // Apply filters
+   if (status && status !== 'all') {
+     submissions = submissions.filter(sub => sub.status === status);
+   }
 
-    if (team) {
-      // Filter by team - find students in the specified team
-      const teamObj = await StudentTeam.findById(team);
-      if (teamObj) {
-        const teamMemberIds = teamObj.members.map(m => m.toString());
-        submissions = submissions.filter(sub => 
-          teamMemberIds.includes(sub.student._id.toString())
-        );
-      }
-    }
+   if (team) {
+     // Filter by team - find students in the specified team
+     const teamObj = await StudentTeam.findById(team);
+     if (teamObj) {
+       const teamMemberIds = teamObj.members.map(m => m.toString());
+       submissions = submissions.filter(sub => 
+         teamMemberIds.includes(sub.student._id.toString())
+       );
+     }
+   }
 
-    // Sort submissions
-    submissions = submissions.sort((a, b) => {
-      let aVal = a[sortBy];
-      let bVal = b[sortBy];
-      
-      if (sortBy === 'submittedAt' || sortBy === 'gradedAt') {
-        aVal = new Date(aVal);
-        bVal = new Date(bVal);
-      }
-      
-      if (order === 'desc') {
-        return bVal > aVal ? 1 : -1;
-      } else {
-        return aVal > bVal ? 1 : -1;
-      }
-    });
+   // Sort submissions
+   submissions = submissions.sort((a, b) => {
+     let aVal = a[sortBy];
+     let bVal = b[sortBy];
+     
+     if (sortBy === 'submittedAt' || sortBy === 'gradedAt') {
+       aVal = new Date(aVal);
+       bVal = new Date(bVal);
+     }
+     
+     if (order === 'desc') {
+       return bVal > aVal ? 1 : -1;
+     } else {
+       return aVal > bVal ? 1 : -1;
+     }
+   });
 
-    // Add team information to each submission
-    const submissionsWithTeams = submissions.map(sub => {
-      const subObj = sub.toObject();
-      
-      // Find which team this student belongs to
-      const studentTeam = task.team.find(team => 
-        team.members.some(member => member._id.toString() === sub.student._id.toString())
-      );
-      
-      subObj.studentTeam = studentTeam ? {
-        id: studentTeam._id,
-        name: studentTeam.name
-      } : null;
-      
-      return subObj;
-    });
+   // Add team information to each submission
+   const submissionsWithTeams = submissions.map(sub => {
+     const subObj = sub.toObject();
+     
+     // Find which team this student belongs to
+     const studentTeam = task.team.find(team => 
+       team.members.some(member => member._id.toString() === sub.student._id.toString())
+     );
+     
+     subObj.studentTeam = studentTeam ? {
+       id: studentTeam._id,
+       name: studentTeam.name
+     } : null;
+     
+     return subObj;
+   });
 
-    // Generate statistics
-    const stats = {
-      totalSubmissions: submissions.length,
-      gradedSubmissions: submissions.filter(s => s.grade !== undefined).length,
-      pendingGrades: submissions.filter(s => s.status === 'submitted' && s.grade === undefined).length,
-      lateSubmissions: submissions.filter(s => s.isLate).length,
-      averageGrade: submissions.filter(s => s.grade !== undefined).length > 0 ?
-        Math.round(submissions.filter(s => s.grade !== undefined)
-          .reduce((sum, s) => sum + s.grade, 0) / 
-          submissions.filter(s => s.grade !== undefined).length * 100) / 100 : null,
-      gradeDistribution: {
-        A: submissions.filter(s => s.grade >= task.maxPoints * 0.9).length,
-        B: submissions.filter(s => s.grade >= task.maxPoints * 0.8 && s.grade < task.maxPoints * 0.9).length,
-        C: submissions.filter(s => s.grade >= task.maxPoints * 0.7 && s.grade < task.maxPoints * 0.8).length,
-        D: submissions.filter(s => s.grade >= task.maxPoints * 0.6 && s.grade < task.maxPoints * 0.7).length,
-        F: submissions.filter(s => s.grade < task.maxPoints * 0.6).length
-      }
-    };
+   // Generate statistics
+   const stats = {
+     totalSubmissions: submissions.length,
+     gradedSubmissions: submissions.filter(s => s.grade !== undefined).length,
+     pendingGrades: submissions.filter(s => s.status === 'submitted' && s.grade === undefined).length,
+     lateSubmissions: submissions.filter(s => s.isLate).length,
+     averageGrade: submissions.filter(s => s.grade !== undefined).length > 0 ?
+       Math.round(submissions.filter(s => s.grade !== undefined)
+         .reduce((sum, s) => sum + s.grade, 0) / 
+         submissions.filter(s => s.grade !== undefined).length * 100) / 100 : null,
+     gradeDistribution: {
+       A: submissions.filter(s => s.grade >= task.maxPoints * 0.9).length,
+       B: submissions.filter(s => s.grade >= task.maxPoints * 0.8 && s.grade < task.maxPoints * 0.9).length,
+       C: submissions.filter(s => s.grade >= task.maxPoints * 0.7 && s.grade < task.maxPoints * 0.8).length,
+       D: submissions.filter(s => s.grade >= task.maxPoints * 0.6 && s.grade < task.maxPoints * 0.7).length,
+       F: submissions.filter(s => s.grade < task.maxPoints * 0.6).length
+     }
+   };
 
-    res.json({
-      success: true,
-      task: {
-        id: task._id,
-        title: task.title,
-        maxPoints: task.maxPoints,
-        dueDate: task.dueDate,
-        allowLateSubmissions: task.allowLateSubmissions,
-        maxAttempts: task.maxAttempts
-      },
-      submissions: submissionsWithTeams,
-      statistics: stats,
-      filters: { status, team, sortBy, order },
-      count: submissionsWithTeams.length
-    });
+   res.json({
+     success: true,
+     task: {
+       id: task._id,
+       title: task.title,
+       maxPoints: task.maxPoints,
+       dueDate: task.dueDate,
+       allowLateSubmissions: task.allowLateSubmissions,
+       maxAttempts: task.maxAttempts
+     },
+     submissions: submissionsWithTeams,
+     statistics: stats,
+     filters: { status, team, sortBy, order },
+     count: submissionsWithTeams.length
+   });
 
-  } catch (error) {
-    console.error('❌ Get submissions error:', error);
-    res.status(500).json({ 
-      message: error.message || 'Failed to fetch submissions',
-      success: false 
-    });
-  }
+ } catch (error) {
+   console.error('❌ Get submissions error:', error);
+   res.status(500).json({ 
+     message: error.message || 'Failed to fetch submissions',
+     success: false 
+   });
+ }
 });
 
 // ✅ Enhanced update task
 router.put('/:taskId', verifyToken, async (req, res) => {
-  try {
-    if (req.user.role !== 'faculty') {
-      return res.status(403).json({ 
-        message: 'Only faculty can update tasks',
-        success: false 
-      });
-    }
+ try {
+   if (req.user.role !== 'faculty') {
+     return res.status(403).json({ 
+       message: 'Only faculty can update tasks',
+       success: false 
+     });
+   }
 
-    const { taskId } = req.params;
-    const updates = req.body;
+   const { taskId } = req.params;
+   const updates = req.body;
 
-    console.log(`📝 Updating task: ${taskId}`);
+   console.log(`📝 Updating task: ${taskId}`);
 
-    const task = await Task.findById(taskId);
-    if (!task) {
-      return res.status(404).json({ 
-        message: 'Task not found',
-        success: false 
-      });
-    }
+   const task = await Task.findById(taskId);
+   if (!task) {
+     return res.status(404).json({ 
+       message: 'Task not found',
+       success: false 
+     });
+   }
 
-    if (task.faculty.toString() !== req.user.id) {
-      return res.status(403).json({ 
-        message: 'You can only update your own tasks',
-        success: false 
-      });
-    }
+   if (task.faculty.toString() !== req.user.id) {
+     return res.status(403).json({ 
+       message: 'You can only update your own tasks',
+       success: false 
+     });
+   }
 
-    // Validate updates
-    if (updates.dueDate) {
-      const dueDate = new Date(updates.dueDate);
-      if (dueDate <= new Date()) {
-        return res.status(400).json({
-          success: false,
-          message: 'Due date must be in the future'
-        });
-      }
-    }
+   // Validate updates
+   if (updates.dueDate) {
+     const dueDate = new Date(updates.dueDate);
+     if (dueDate <= new Date()) {
+       return res.status(400).json({
+         success: false,
+         message: 'Due date must be in the future'
+       });
+     }
+   }
 
-    if (updates.maxPoints) {
-      const maxPoints = parseInt(updates.maxPoints);
-      if (!maxPoints || maxPoints < 1 || maxPoints > 1000) {
-        return res.status(400).json({
-          success: false,
-          message: 'Maximum points must be between 1 and 1000'
-        });
-      }
-    }
+   if (updates.maxPoints) {
+     const maxPoints = parseInt(updates.maxPoints);
+     if (!maxPoints || maxPoints < 1 || maxPoints > 1000) {
+       return res.status(400).json({
+         success: false,
+         message: 'Maximum points must be between 1 and 1000'
+       });
+     }
+   }
 
-    // Apply updates
-    const allowedUpdates = [
-      'title', 'description', 'instructions', 'rubric', 'dueDate', 'maxPoints',
-      'allowLateSubmissions', 'maxAttempts', 'allowFileUpload', 'allowedFileTypes',
-      'maxFileSize', 'priority', 'status'
-    ];
+   // Apply updates
+   const allowedUpdates = [
+     'title', 'description', 'instructions', 'rubric', 'dueDate', 'maxPoints',
+     'allowLateSubmissions', 'maxAttempts', 'allowFileUpload', 'allowedFileTypes',
+     'maxFileSize', 'priority', 'status'
+   ];
 
-    allowedUpdates.forEach(field => {
-      if (updates[field] !== undefined) {
-        task[field] = updates[field];
-      }
-    });
+   allowedUpdates.forEach(field => {
+     if (updates[field] !== undefined) {
+       task[field] = updates[field];
+     }
+   });
 
-    task.updatedAt = new Date();
+   task.updatedAt = new Date();
 
-    const updatedTask = await task.save();
+   const updatedTask = await task.save();
 
-    console.log(`✅ Task updated successfully: ${updatedTask.title}`);
+   console.log(`✅ Task updated successfully: ${updatedTask.title}`);
 
-    res.json({
-      success: true,
-      message: 'Task updated successfully',
-      task: {
-        id: updatedTask._id,
-        title: updatedTask.title,
-        updatedAt: updatedTask.updatedAt
-      }
-    });
+   res.json({
+     success: true,
+     message: 'Task updated successfully',
+     task: {
+       id: updatedTask._id,
+       title: updatedTask.title,
+       updatedAt: updatedTask.updatedAt
+     }
+   });
 
-  } catch (error) {
-    console.error('❌ Update task error:', error);
-    res.status(500).json({ 
-      message: error.message || 'Failed to update task',
-      success: false 
-    });
-  }
+ } catch (error) {
+   console.error('❌ Update task error:', error);
+   res.status(500).json({ 
+     message: error.message || 'Failed to update task',
+     success: false 
+   });
+ }
 });
 
 // ✅ Enhanced delete task
 router.delete('/:taskId', verifyToken, async (req, res) => {
-  try {
-    if (req.user.role !== 'faculty') {
-      return res.status(403).json({ 
-        message: 'Only faculty can delete tasks',
-        success: false 
-      });
-    }
+ try {
+   if (req.user.role !== 'faculty') {
+     return res.status(403).json({ 
+       message: 'Only faculty can delete tasks',
+       success: false 
+     });
+   }
 
-    const { taskId } = req.params;
+   const { taskId } = req.params;
 
-    console.log(`🗑️ Deleting task: ${taskId}`);
+   console.log(`🗑️ Deleting task: ${taskId}`);
 
-    const task = await Task.findById(taskId);
-    if (!task) {
-      return res.status(404).json({ 
-        message: 'Task not found',
-        success: false 
-      });
-    }
+   const task = await Task.findById(taskId);
+   if (!task) {
+     return res.status(404).json({ 
+       message: 'Task not found',
+       success: false 
+     });
+   }
 
-    if (task.faculty.toString() !== req.user.id) {
-      return res.status(403).json({ 
-        message: 'You can only delete your own tasks',
-        success: false 
-      });
-    }
+   if (task.faculty.toString() !== req.user.id) {
+     return res.status(403).json({ 
+       message: 'You can only delete your own tasks',
+       success: false 
+     });
+   }
 
-    // Clean up associated files
-    if (task.submissions && task.submissions.length > 0) {
-      for (const submission of task.submissions) {
-        if (submission.files && submission.files.length > 0) {
-          for (const file of submission.files) {
-            try {
-              await fs.unlink(file.path);
-              console.log(`🗑️ Deleted file: ${file.path}`);
-            } catch (error) {
-              console.warn(`⚠️ Failed to delete file: ${file.path}`, error);
-            }
-          }
-        }
-      }
-    }
+   // Clean up associated files
+   if (task.submissions && task.submissions.length > 0) {
+     for (const submission of task.submissions) {
+       if (submission.files && submission.files.length > 0) {
+         for (const file of submission.files) {
+           try {
+             await fs.unlink(file.path);
+             console.log(`🗑️ Deleted file: ${file.path}`);
+           } catch (error) {
+             console.warn(`⚠️ Failed to delete file: ${file.path}`, error);
+           }
+         }
+       }
+     }
+   }
 
-    await Task.findByIdAndDelete(taskId);
+   await Task.findByIdAndDelete(taskId);
 
-    console.log(`✅ Task deleted successfully: ${task.title}`);
+   console.log(`✅ Task deleted successfully: ${task.title}`);
 
-    res.json({
-      success: true,
-      message: 'Task deleted successfully'
-    });
+   res.json({
+     success: true,
+     message: 'Task deleted successfully'
+   });
 
-  } catch (error) {
-    console.error('❌ Delete task error:', error);
-    res.status(500).json({ 
-      message: error.message || 'Failed to delete task',
-      success: false 
-    });
-  }
+ } catch (error) {
+   console.error('❌ Delete task error:', error);
+   res.status(500).json({ 
+     message: error.message || 'Failed to delete task',
+     success: false 
+   });
+ }
 });
 
 // ✅ Download submission file
 router.get('/submissions/:filename', verifyToken, async (req, res) => {
-  try {
-    const { filename } = req.params;
-    const filePath = path.join(__dirname, '../uploads/submissions', filename);
+ try {
+   const { filename } = req.params;
+   const filePath = path.join(__dirname, '../uploads/submissions', filename);
 
-    // Check if file exists
-    try {
-      await fs.access(filePath);
-    } catch (error) {
-      return res.status(404).json({
-        success: false,
-        message: 'File not found'
-      });
-    }
+   // Check if file exists
+   try {
+     await fs.access(filePath);
+   } catch (error) {
+     return res.status(404).json({
+       success: false,
+       message: 'File not found'
+     });
+   }
 
-    // TODO: Add proper access control - verify user has permission to download this file
+   res.download(filePath, (error) => {
+     if (error) {
+       console.error('❌ Download error:', error);
+       res.status(500).json({
+         success: false,
+         message: 'Failed to download file'
+       });
+     }
+   });
 
-    res.download(filePath, (error) => {
-      if (error) {
-        console.error('❌ Download error:', error);
-        res.status(500).json({
-          success: false,
-          message: 'Failed to download file'
-        });
-      }
-    });
-
-  } catch (error) {
-    console.error('❌ Download file error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to download file'
-    });
-  }
+ } catch (error) {
+   console.error('❌ Download file error:', error);
+   res.status(500).json({
+     success: false,
+     message: 'Failed to download file'
+   });
+ }
 });
 
 // ✅ General error handling middleware
 router.use((error, req, res, next) => {
-  console.error('❌ Task routes error:', error);
-  
-  if (error.name === 'ValidationError') {
-    const errors = Object.values(error.errors).map(err => err.message);
-    return res.status(400).json({
-      message: 'Validation failed',
-      success: false,
-      errors: errors
-    });
-  }
-  
-  if (error.name === 'CastError') {
-    return res.status(400).json({
-      message: 'Invalid ID format',
-      success: false
-    });
-  }
-  
-  res.status(500).json({
-    message: error.message || 'Internal server error',
-    success: false
-  });
+ console.error('❌ Task routes error:', error);
+ 
+ if (error.name === 'ValidationError') {
+   const errors = Object.values(error.errors).map(err => err.message);
+   return res.status(400).json({
+     message: 'Validation failed',
+     success: false,
+     errors: errors
+   });
+ }
+ 
+ if (error.name === 'CastError') {
+   return res.status(400).json({
+     message: 'Invalid ID format',
+     success: false
+   });
+ }
+ 
+ res.status(500).json({
+   message: error.message || 'Internal server error',
+   success: false
+ });
 });
 
 module.exports = router;

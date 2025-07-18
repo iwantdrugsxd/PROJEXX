@@ -4,7 +4,7 @@ import TaskCreator from './TaskCreator';
 import TaskSubmission from './TaskSubmission';
 import SubmissionViewer from './SubmissionViewer';
 
-const API_BASE = process.env.REACT_APP_API_BASE || 'http://localhost:3000/api';
+const API_BASE = process.env.REACT_APP_API_BASE || 'http://localhost:5000/api';
 
 const TaskList = ({ serverId, userRole, userId }) => {
   const [tasks, setTasks] = useState([]);

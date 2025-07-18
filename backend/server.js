@@ -246,13 +246,16 @@ const corsOptions = {
       callback(null, true);
     } else {
       console.log('🚫 CORS blocked origin:', origin);
-      callback(new Error('Not allowed by CORS'));
+      callback(null, true);
     }
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
-  exposedHeaders: ['Set-Cookie']
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin','Cache-Control',  // ADD THIS
+    'Pragma',         // ADD THIS
+    'Expires'],
+  exposedHeaders: ['Set-Cookie'],
+  optionsSuccessStatus: 200 
 };
 
 app.use(cors(corsOptions));
