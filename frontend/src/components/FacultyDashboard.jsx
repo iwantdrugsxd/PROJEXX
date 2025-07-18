@@ -158,8 +158,7 @@ const EnhancedFacultyDashboard = ({ user, onLogout }) => {
     if (isOnline) {
       refreshInterval.current = setInterval(() => {
         fetchDashboardData(true); // silent refresh
-      }, 30000);
-    }
+      }, 3000000);    }
 
     return () => {
       if (refreshInterval.current) {
@@ -232,7 +231,12 @@ const EnhancedFacultyDashboard = ({ user, onLogout }) => {
         
         // Auto-select first server if available and no server is selected
         if (serversWithTeams.length > 0 && !selectedServer) {
-          setSelectedServer(serversWithTeams[0]);
+                  const serverWithTasks = serversWithTeams.find(s => (s.stats?.tasksCount || 0) > 0);
+        const serverWithTeams = serversWithTeams.find(s => (s.stats?.teamsCount || 0) > 0);
+        const defaultServer = serverWithTasks || serverWithTeams || serversWithTeams[0];
+        
+        console.log('🎯 Auto-selecting server:', defaultServer.title);
+        setSelectedServer(defaultServer);
         }
         
         setDashboardStats(prev => ({ ...prev, ...basicStats }));

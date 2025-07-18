@@ -2,13 +2,13 @@
 const mongoose = require("mongoose");
 
 const studentTeamSchema = new mongoose.Schema({
- teamId: {
+ teamId: [{
   type: mongoose.Schema.Types.ObjectId,
   unique: true,
   default: function() {
     return new mongoose.Types.ObjectId();
   }
-},
+}],
  name: {
     type: String,
     required: true,
