@@ -661,7 +661,8 @@ app.get("/api/status", (req, res) => {
 // Core API Routes (always available)
 app.use("/api/faculty", FacultyRoutes);
 app.use("/api/student", StudentRoutes);
-app.use("/api/projectServers", projectServerRoutes);
+// app.use("/api/projectServers", projectServerRoutes);
+app.use("/api/server", projectServerRoutes);
 app.use("/api/teamRoutes", teamRoutes);
 app.use("/api/tasks", taskRoutes);
 app.use('/api/notifications', notificationRoutes);
@@ -966,12 +967,13 @@ app.use('/api/*', (req, res) => {
         'POST /api/projectServers/create',
         'GET /api/projectServers/student-servers',
         'GET /api/projectServers/faculty-servers',
+        'GET /api/server/:serverId',
         'DELETE /api/projectServers/:serverId'
       ],
       teams: [
         'POST /api/teamRoutes/createTeam',
         'GET /api/teamRoutes/student-teams',
-        'GET /api/teamRoutes/faculty-teams',
+        'GET /api/teamRoutes/faculty',
         'GET /api/teamRoutes/server/:serverId/teams',
         'POST /api/teamRoutes/join/:teamId',
         'POST /api/teamRoutes/leave/:teamId',

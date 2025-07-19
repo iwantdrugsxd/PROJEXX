@@ -30,10 +30,12 @@ const TaskList = ({ serverId, userRole, userId }) => {
         : userRole === 'faculty' 
           ? `${API_BASE}/tasks/faculty-tasks`
           : `${API_BASE}/tasks/student-tasks`;
-
-      const response = await fetch(endpoint, {
-        credentials: 'include'
-      });
+// const endpoint = serverId 
+//   ? `${API_BASE}/tasks/faculty?serverId=${serverId}`
+//   : `${API_BASE}/tasks/faculty`;
+//       const response = await fetch(endpoint, {
+//         credentials: 'include'
+//       });
       
       const data = await response.json();
       if (data.success) {

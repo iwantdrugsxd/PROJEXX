@@ -1,1425 +1,1273 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { 
-  X, 
-  Calendar, 
-  Clock, 
-  Award, 
-  AlertCircle, 
-  Users, 
-  UserPlus, 
-  Check, 
-  Loader2,
-  Plus,
-  Minus,
-  FileText,
-  Target,
-  Send,
-  Server,
-  RefreshCw,
-  CheckCircle,
-  Info,
-  Upload,
-  Settings,
-  Wifi,
-  WifiOff
-} from 'lucide-react';
+// backend/routes/taskRoutes.js
+const express = require('express');
+const mongoose = require('mongoose');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
+const crypto = require('crypto');
+const { v4: uuidv4 } = require('uuid');
+const router = express.Router();
 
-const TaskCreator = ({ serverId, serverTitle, onTaskCreated, onClose }) => {
-  // ✅ Refs for stability
-  const mountedRef = useRef(true);
-  const fetchTimeoutRef = useRef(null);
-  const abortControllerRef = useRef(null);
-  const validationTimeoutRef = useRef(null);
+// Import middleware and models
+const verifyToken = require('../middleware/verifyToken');
+const Task = require('../models/taskSchema');
+const Student = require('../models/studentSchema');
+const Faculty = require('../models/facultySchema');
+const StudentTeam = require('../models/studentTeamSchema');
+const ProjectServer = require('../models/projectServerSchema');
+
+// Try to import NotificationService (optional)
+let NotificationService;
+try {
+  NotificationService = require('../services/notificationService');
+} catch (err) {
+  console.log('⚠️  NotificationService not found - notifications disabled');
+}
+
+// Enhanced logging function
+const logWithTimestamp = (level, message, data = null) => {
+  const timestamp = new Date().toISOString();
+  const logMessage = `[${timestamp}] [TASK_ROUTES] [${level.toUpperCase()}] ${message}`;
   
-  // ✅ Core Form State - OPTIMIZED
-  const [formData, setFormData] = useState({
-    title: '',
-    description: '',
-    dueDate: '',
-    maxPoints: 100,
-    assignmentType: 'team',
-    team: [],
-    assignToAll: false,
-    allowLateSubmissions: false,
-    maxAttempts: 1,
-    allowFileUpload: true,
-    allowedFileTypes: ['pdf', 'doc', 'docx'],
-    maxFileSize: 10485760, // 10MB
-    priority: 'medium',
-    instructions: '',
-    rubric: '',
-    autoGrade: false,
-    publishImmediately: true,
-    notifyStudents: true
-  });
+  if (level === 'error') {
+    console.error(logMessage, data ? JSON.stringify(data, null, 2) : '');
+  } else if (level === 'warn') {
+    console.warn(logMessage, data ? JSON.stringify(data, null, 2) : '');
+  } else {
+    console.log(logMessage, data ? JSON.stringify(data, null, 2) : '');
+  }
+};
 
-  // ✅ UI State - SEPARATED for better performance
-  const [uiState, setUiState] = useState({
-    teams: [],
-    loading: false,
-    loadingTeams: false,
-    errors: {},
-    showAdvanced: false,
-    submitAttempted: false,
-    serverInfo: null,
-    networkStatus: 'online',
-    fetchAttempts: 0
-  });
-
-  // ✅ Validation state - SEPARATED and debounced
-  const [validationErrors, setValidationErrors] = useState({});
-  
-  // ✅ Constants - MEMOIZED
-  const API_BASE = useMemo(() => 
-    process.env.REACT_APP_API_BASE_URL || process.env.REACT_APP_API_BASE || 'http://localhost:5000/api'
-  , []);
-  
-  const MAX_RETRY_ATTEMPTS = 3;
-  
-  const fileTypeOptions = useMemo(() => [
-    { value: 'pdf', label: 'PDF Documents', icon: '📄' },
-    { value: 'doc', label: 'Word Documents (.doc)', icon: '📝' },
-    { value: 'docx', label: 'Word Documents (.docx)', icon: '📝' },
-    { value: 'txt', label: 'Text Files', icon: '📄' },
-    { value: 'jpg', label: 'JPEG Images', icon: '🖼️' },
-    { value: 'jpeg', label: 'JPEG Images (Alt)', icon: '🖼️' },
-    { value: 'png', label: 'PNG Images', icon: '🖼️' },
-    { value: 'gif', label: 'GIF Images', icon: '🖼️' },
-    { value: 'zip', label: 'ZIP Archives', icon: '🗜️' },
-    { value: 'rar', label: 'RAR Archives', icon: '🗜️' },
-    { value: 'py', label: 'Python Files', icon: '🐍' },
-    { value: 'js', label: 'JavaScript Files', icon: '⚡' },
-    { value: 'html', label: 'HTML Files', icon: '🌐' },
-    { value: 'css', label: 'CSS Files', icon: '🎨' },
-    { value: 'json', label: 'JSON Files', icon: '📋' }
-  ], []);
-
-  const priorityOptions = useMemo(() => [
-    { value: 'low', label: 'Low Priority', color: 'text-green-600 bg-green-50 border-green-200', icon: '🟢' },
-    { value: 'medium', label: 'Medium Priority', color: 'text-yellow-600 bg-yellow-50 border-yellow-200', icon: '🟡' },
-    { value: 'high', label: 'High Priority', color: 'text-orange-600 bg-orange-50 border-orange-200', icon: '🟠' },
-    { value: 'urgent', label: 'Urgent', color: 'text-red-600 bg-red-50 border-red-200', icon: '🔴' }
-  ], []);
-
-  // ✅ OPTIMIZED: Fast validation without debouncing for immediate feedback
-  const validateFieldSync = useCallback((name, value) => {
-    switch (name) {
-      case 'title':
-        if (!value.trim()) return 'Task title is required';
-        if (value.length < 3) return 'Title must be at least 3 characters';
-        if (value.length > 100) return 'Title must be less than 100 characters';
-        return null;
-        
-      case 'description':
-        if (!value.trim()) return 'Description is required';
-        if (value.length < 10) return 'Description must be at least 10 characters';
-        if (value.length > 2000) return 'Description must be less than 2000 characters';
-        return null;
-        
-      case 'dueDate':
-        if (!value) return 'Due date is required';
-        const dueDate = new Date(value);
-        const now = new Date();
-        const minDate = new Date(now.getTime() + 30 * 60 * 1000);
-        if (dueDate <= minDate) return 'Due date must be at least 30 minutes in the future';
-        return null;
-        
-      case 'maxPoints':
-        const points = parseFloat(value);
-        if (!points || points < 1) return 'Maximum points must be at least 1';
-        if (points > 1000) return 'Maximum points cannot exceed 1000';
-        return null;
-        
-      case 'maxAttempts':
-        const attempts = parseInt(value);
-        if (!attempts || attempts < 1) return 'Must allow at least 1 attempt';
-        if (attempts > 10) return 'Cannot exceed 10 attempts';
-        return null;
-        
-      default:
-        return null;
-    }
-  }, []);
-
-  // ✅ OPTIMIZED: Debounced validation update (non-blocking)
-  const updateValidationErrors = useCallback((name, error) => {
-    if (validationTimeoutRef.current) {
-      clearTimeout(validationTimeoutRef.current);
+// File storage configuration
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const userRole = req.user?.role || 'unknown';
+    const uploadPath = path.join(__dirname, '../uploads', userRole);
+    
+    // Ensure directory exists
+    if (!fs.existsSync(uploadPath)) {
+      fs.mkdirSync(uploadPath, { recursive: true });
     }
     
-    validationTimeoutRef.current = setTimeout(() => {
-      setValidationErrors(prev => {
-        if (error) {
-          return { ...prev, [name]: error };
-        } else {
-          const { [name]: removed, ...rest } = prev;
-          return rest;
-        }
+    cb(null, uploadPath);
+  },
+  filename: (req, file, cb) => {
+    // Generate unique filename with timestamp and hash
+    const timestamp = Date.now();
+    const randomHash = crypto.randomBytes(6).toString('hex');
+    const ext = path.extname(file.originalname);
+    const baseName = path.basename(file.originalname, ext)
+      .replace(/[^a-zA-Z0-9]/g, '_')
+      .substring(0, 30);
+    
+    const filename = `${baseName}_${timestamp}_${randomHash}${ext}`;
+    cb(null, filename);
+  }
+});
+
+const upload = multer({
+  storage: storage,
+  limits: {
+    fileSize: 50 * 1024 * 1024, // 50MB limit
+    files: 10 // Maximum 10 files per upload
+  },
+  fileFilter: (req, file, cb) => {
+    // Basic security check - reject executable files
+    const dangerousExts = ['.exe', '.bat', '.cmd', '.com', '.pif', '.scr', '.vbs', '.js'];
+    const ext = path.extname(file.originalname).toLowerCase();
+    
+    if (dangerousExts.includes(ext)) {
+      return cb(new Error('File type not allowed for security reasons'), false);
+    }
+    
+    cb(null, true);
+  }
+});
+
+// ✅ FIXED: Add the missing student-tasks endpoint that the frontend is calling
+router.get('/student-tasks', verifyToken, async (req, res) => {
+  try {
+    logWithTimestamp('info', '=== STUDENT TASKS REQUEST START ===', {
+      studentId: req.user.id,
+      userRole: req.user.role
+    });
+
+    // Validate user role
+    if (req.user.role !== 'student') {
+      logWithTimestamp('error', 'Access denied - non-student user', {
+        userId: req.user.id,
+        role: req.user.role
       });
-    }, 100); // Very short debounce for smooth experience
-  }, []);
-
-  // ✅ Network status check
-  const checkNetworkStatus = useCallback(async () => {
-    setUiState(prev => ({ ...prev, networkStatus: 'checking' }));
-    try {
-      setUiState(prev => ({ ...prev, networkStatus: 'online' }));
-      return true;
-    } catch (error) {
-      console.error('❌ Network check failed:', error);
-      setUiState(prev => ({ ...prev, networkStatus: 'offline' }));
-      return false;
-    }
-  }, []);
-
-  // ✅ Initialize Component
-  useEffect(() => {
-    mountedRef.current = true;
-    
-    if (serverId) {
-      fetchServerInfo();
-      fetchTeamsWithRetry();
-    }
-    
-    return () => {
-      mountedRef.current = false;
-      if (fetchTimeoutRef.current) clearTimeout(fetchTimeoutRef.current);
-      if (abortControllerRef.current) abortControllerRef.current.abort();
-      if (validationTimeoutRef.current) clearTimeout(validationTimeoutRef.current);
-    };
-  }, [serverId]);
-
-  // ✅ Server info fetching
-  const fetchServerInfo = useCallback(async () => {
-    if (!serverId) return;
-    
-    try {
-      const response = await fetch(`${API_BASE}/projectServers/faculty-servers`, {
-        credentials: 'include'
+      return res.status(403).json({
+        success: false,
+        message: 'Student access required'
       });
-      
-      if (response.ok) {
-        const data = await response.json();
-        const server = data.servers?.find(s => s._id === serverId);
-        if (server && mountedRef.current) {
-          setUiState(prev => ({ ...prev, serverInfo: server }));
-        }
-      }
-    } catch (error) {
-      console.error('❌ Failed to fetch server info:', error);
     }
-  }, [serverId, API_BASE]);
 
-  // ✅ Optimized Team Fetching
-  const fetchTeamsWithRetry = useCallback(async (retryCount = 0) => {
-    if (!serverId || !mountedRef.current) return;
-    
-    console.log(`🔄 Fetching teams for server ${serverId} (attempt ${retryCount + 1})`);
-    
-    setUiState(prev => ({ 
-      ...prev, 
-      loadingTeams: true, 
-      fetchAttempts: retryCount + 1,
-      errors: { ...prev.errors, teams: null }
-    }));
-    
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
-    
-    abortControllerRef.current = new AbortController();
-    
-    try {
-      setUiState(prev => ({ ...prev, networkStatus: 'online' }));
-      
-      const endpoints = [
-        `${API_BASE}/teamRoutes/server/${serverId}/teams`,
-        `${API_BASE}/tasks/server/${serverId}/teams`,
-        `${API_BASE}/teamRoutes/faculty-teams`
+    logWithTimestamp('info', 'Fetching tasks for student', {
+      studentId: req.user.id
+    });
+
+    // Find teams the student belongs to
+    const studentTeams = await StudentTeam.find({
+      members: req.user.id
+    });
+
+    const teamIds = studentTeams.map(team => team._id);
+
+    logWithTimestamp('info', 'Student teams found', {
+      studentId: req.user.id,
+      teamCount: teamIds.length,
+      teamIds: teamIds
+    });
+
+    // Build query to find tasks
+    let taskQuery = { status: 'active' };
+
+    if (teamIds.length > 0) {
+      taskQuery.$or = [
+        { team: { $in: teamIds } },        // Team assignments
+        { student: req.user.id }           // Individual assignments
       ];
-      
-      let teams = [];
-      let lastError = null;
-      let successfulEndpoint = null;
-      
-      for (const endpoint of endpoints) {
-        try {
-          console.log(`🔍 Trying endpoint: ${endpoint}`);
-          
-          const response = await fetch(endpoint, {
-            credentials: 'include',
-            headers: {
-              'Accept': 'application/json',
-              'Content-Type': 'application/json'
-            },
-            signal: abortControllerRef.current.signal
-          });
-          
-          if (!mountedRef.current) return;
-          
-          const data = await response.json();
-          console.log(`📡 Response from ${endpoint}:`, data);
-          
-          if (response.ok && data.success) {
-            if (data.teams) {
-              teams = data.teams;
-            } else if (Array.isArray(data)) {
-              teams = data;
-            }
-            
-            if (endpoint.includes('faculty-teams') && teams.length > 0) {
-              try {
-                const serverResponse = await fetch(`${API_BASE}/projectServers/faculty-servers`, {
-                  credentials: 'include'
-                });
-                
-                if (serverResponse.ok) {
-                  const serverData = await serverResponse.json();
-                  const currentServer = serverData.servers?.find(s => s._id === serverId);
-                  
-                  if (currentServer) {
-                    teams = teams.filter(team => 
-                      team.projectServer === currentServer.code
-                    );
-                    console.log(`🔍 Filtered ${teams.length} teams for server ${currentServer.code}`);
-                  }
-                }
-              } catch (filterError) {
-                console.log('⚠️ Could not filter teams by server:', filterError);
-              }
-            }
-            
-            successfulEndpoint = endpoint;
-            console.log(`✅ Successfully fetched ${teams.length} teams from ${endpoint}`);
-            break;
-            
-          } else {
-            lastError = data.message || `HTTP ${response.status}`;
-            console.log(`❌ Endpoint ${endpoint} failed: ${lastError}`);
-          }
-          
-        } catch (fetchError) {
-          lastError = fetchError.message;
-          console.log(`❌ Endpoint ${endpoint} error:`, fetchError.message);
-        }
-      }
-      
-      if (teams.length > 0) {
-        setUiState(prev => ({ 
-          ...prev, 
-          teams, 
-          networkStatus: 'online',
-          errors: { ...prev.errors, teams: null }
-        }));
-        
-        if (formData.assignToAll) {
-          setFormData(prev => ({
-            ...prev,
-            team: teams.map(team => team._id)
-          }));
-        }
-        
-        console.log(`🎉 Successfully loaded ${teams.length} teams using ${successfulEndpoint}`);
-        
-      } else {
-        console.log('📭 No teams found in any endpoint');
-        setUiState(prev => ({ ...prev, teams: [] }));
-        
-        let errorMessage = 'No teams found. Students need to create teams before you can assign tasks.';
-        
-        if (lastError) {
-          if (lastError.includes('403') || lastError.includes('Access denied')) {
-            errorMessage = 'Access denied. Please check your permissions for this server.';
-          } else if (lastError.includes('404') || lastError.includes('not found')) {
-            errorMessage = 'Server not found or you don\'t have access to it.';
-          } else {
-            errorMessage = `Failed to load teams: ${lastError}`;
-          }
-        }
-        
-        setUiState(prev => ({ 
-          ...prev, 
-          errors: { ...prev.errors, teams: errorMessage }
-        }));
-      }
-      
-    } catch (error) {
-      console.error(`❌ Team fetch error (attempt ${retryCount + 1}):`, error);
-      
-      if (!mountedRef.current) return;
-      
-      if (error.name === 'AbortError') {
-        console.log('🚫 Request was aborted');
-        return;
-      }
-      
-      setUiState(prev => ({ ...prev, networkStatus: 'offline' }));
-      
-      if (retryCount < MAX_RETRY_ATTEMPTS - 1) {
-        const retryDelay = Math.pow(2, retryCount) * 1000;
-        console.log(`⏱️ Retrying in ${retryDelay}ms...`);
-        
-        fetchTimeoutRef.current = setTimeout(() => {
-          if (mountedRef.current) {
-            fetchTeamsWithRetry(retryCount + 1);
-          }
-        }, retryDelay);
-        return;
-      } else {
-        let errorMessage = 'Failed to load teams after multiple attempts.';
-        
-        if (error.message.includes('Network connection')) {
-          errorMessage = 'Network connection unavailable. Please check your internet connection and try again.';
-        } else if (error.message.includes('Failed to fetch')) {
-          errorMessage = 'Unable to connect to server. Please check if the server is running and try again.';
-        } else if (error.message.includes('timeout')) {
-          errorMessage = 'Request timed out. Please try again later.';
-        }
-        
-        setUiState(prev => ({ 
-          ...prev, 
-          errors: { ...prev.errors, teams: errorMessage }
-        }));
-      }
-    } finally {
-      if (mountedRef.current) {
-        setUiState(prev => ({ ...prev, loadingTeams: false }));
-      }
+    } else {
+      // If student is not in any teams, only show individual assignments
+      taskQuery.student = req.user.id;
     }
-  }, [serverId, API_BASE, formData.assignToAll]);
 
-  // ✅ Manual Refresh Handler
-  const handleRefreshTeams = useCallback(async () => {
-    setUiState(prev => ({ ...prev, teams: [], fetchAttempts: 0 }));
-    await fetchTeamsWithRetry();
-  }, [fetchTeamsWithRetry]);
+    // Find tasks assigned to these teams or individually
+    const tasks = await Task.find(taskQuery)
+      .populate('server', 'title code')
+      .populate('team', 'name members')
+      .populate('faculty', 'firstName lastName email')
+      .populate({
+        path: 'submissions',
+        match: { student: req.user.id }
+      })
+      .sort({ dueDate: 1 });
 
-  // ✅ OPTIMIZED: Fast input handler - NO DEBOUNCING
-  const handleInputChange = useCallback((e) => {
-    const { name, value, type, checked } = e.target;
-    
-    // IMMEDIATE state update for smooth typing
-    setFormData(prev => {
-      if (name === 'team') {
-        const currentTeamIds = Array.isArray(prev.team) ? prev.team : [];
-        return {
-          ...prev,
-          team: checked 
-            ? [...currentTeamIds, value]
-            : currentTeamIds.filter(id => id !== value)
-        };
-      } else if (name === 'allowedFileTypes') {
-        const currentFileTypes = Array.isArray(prev.allowedFileTypes) ? prev.allowedFileTypes : [];
-        return {
-          ...prev,
-          allowedFileTypes: checked
-            ? [...currentFileTypes, value]
-            : currentFileTypes.filter(type => type !== value)
-        };
-      } else if (name === 'assignToAll') {
-        return {
-          ...prev,
-          assignToAll: checked,
-          team: checked ? (Array.isArray(uiState.teams) ? uiState.teams.map(team => team._id).filter(Boolean) : []) : []
-        };
-      } else {
-        return {
-          ...prev,
-          [name]: type === 'checkbox' ? checked : 
-                  type === 'number' ? parseFloat(value) || 0 : value
-        };
+    logWithTimestamp('info', 'Raw tasks found', {
+      studentId: req.user.id,
+      taskCount: tasks.length,
+      query: taskQuery
+    });
+
+    // Add submission status for each task
+    const tasksWithStatus = tasks.map(task => {
+      const taskObj = task.toObject();
+      
+      // Find student's submission for this task
+      const studentSubmission = task.submissions?.find(sub => 
+        sub.student && sub.student.toString() === req.user.id
+      );
+
+      // Add submission metadata
+      taskObj.submissionStatus = studentSubmission ? 'submitted' : 'not_submitted';
+      taskObj.submissionDate = studentSubmission?.submittedAt;
+      taskObj.grade = studentSubmission?.grade;
+      taskObj.feedback = studentSubmission?.feedback;
+      taskObj.isLate = studentSubmission?.isLate || false;
+      taskObj.attemptNumber = studentSubmission?.attempt || 0;
+
+      // Calculate if task is overdue
+      taskObj.isOverdue = new Date() > new Date(task.dueDate);
+      
+      // Calculate time remaining
+      const timeRemaining = new Date(task.dueDate) - new Date();
+      taskObj.timeRemaining = Math.max(0, timeRemaining);
+
+      return taskObj;
+    });
+
+    logWithTimestamp('info', 'Tasks processed with submission status', {
+      studentId: req.user.id,
+      totalTasks: tasksWithStatus.length,
+      submittedTasks: tasksWithStatus.filter(t => t.submissionStatus === 'submitted').length,
+      overdueTasks: tasksWithStatus.filter(t => t.isOverdue).length
+    });
+
+    logWithTimestamp('info', '=== STUDENT TASKS REQUEST COMPLETED ===', {
+      studentId: req.user.id,
+      tasksReturned: tasksWithStatus.length
+    });
+
+    res.json({
+      success: true,
+      tasks: tasksWithStatus,
+      metadata: {
+        totalTasks: tasksWithStatus.length,
+        submittedTasks: tasksWithStatus.filter(t => t.submissionStatus === 'submitted').length,
+        pendingTasks: tasksWithStatus.filter(t => t.submissionStatus === 'not_submitted').length,
+        overdueTasks: tasksWithStatus.filter(t => t.isOverdue && t.submissionStatus === 'not_submitted').length,
+        gradedTasks: tasksWithStatus.filter(t => t.grade !== undefined).length
       }
     });
-    
-    // ASYNC validation (non-blocking)
-    if (['title', 'description', 'dueDate', 'maxPoints', 'maxAttempts'].includes(name)) {
-      const inputValue = type === 'checkbox' ? checked : value;
-      const error = validateFieldSync(name, inputValue);
-      updateValidationErrors(name, error);
+
+  } catch (error) {
+    logWithTimestamp('error', 'Error fetching student tasks', {
+      error: error.message,
+      stack: error.stack,
+      studentId: req.user.id
+    });
+
+    console.error('❌ Student tasks error:', error);
+
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch tasks',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+    });
+  }
+});
+
+// ✅ CREATE TASK ROUTE
+router.post('/create', verifyToken, async (req, res) => {
+  try {
+    logWithTimestamp('info', '=== TASK CREATION START ===', {
+      userId: req.user.id,
+      userRole: req.user.role,
+      body: req.body
+    });
+
+    // Validate user role
+    if (req.user.role !== 'faculty') {
+      return res.status(403).json({
+        success: false,
+        message: 'Only faculty members can create tasks'
+      });
     }
-    
-    // Clear submit errors when user makes changes
-    if (uiState.errors.submit) {
-      setUiState(prev => ({ 
-        ...prev, 
-        errors: { ...prev.errors, submit: null }
-      }));
+
+    const {
+      title,
+      description,
+      instructions,
+      rubric,
+      dueDate,
+      maxPoints,
+      serverId,
+      team, // This should be an array of team IDs
+      assignmentType,
+      allowLateSubmissions,
+      maxAttempts,
+      allowFileUpload,
+      allowedFileTypes,
+      maxFileSize,
+      priority,
+      autoGrade,
+      publishImmediately,
+      notifyStudents
+    } = req.body;
+
+    // Input validation
+    if (!title || !description || !dueDate || !maxPoints || !serverId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing required fields: title, description, dueDate, maxPoints, serverId'
+      });
     }
-  }, [uiState.teams, uiState.errors.submit, validateFieldSync, updateValidationErrors]);
 
-  // ✅ Enhanced Form Validation
-  const validateForm = useCallback(() => {
-    const newErrors = {};
+    // Validate due date
+    const dueDateObj = new Date(dueDate);
+    if (dueDateObj <= new Date()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Due date must be in the future'
+      });
+    }
 
-    // Required fields
-    if (!formData.title.trim()) newErrors.title = 'Task title is required';
-    if (!formData.description.trim()) newErrors.description = 'Task description is required';
-    if (!formData.dueDate) newErrors.dueDate = 'Due date is required';
-    if (!formData.maxPoints || formData.maxPoints < 1) newErrors.maxPoints = 'Maximum points must be at least 1';
+    // Validate server exists and user has access
+    const server = await ProjectServer.findById(serverId);
+    if (!server) {
+      return res.status(404).json({
+        success: false,
+        message: 'Project server not found'
+      });
+    }
 
-    // Due date validation
-    if (formData.dueDate) {
-      const dueDate = new Date(formData.dueDate);
-      const now = new Date();
-      const minDate = new Date(now.getTime() + 30 * 60 * 1000);
-      
-      if (dueDate <= minDate) {
-        newErrors.dueDate = 'Due date must be at least 30 minutes in the future';
+    if (server.faculty.toString() !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: 'You can only create tasks for your own servers'
+      });
+    }
+
+    // Handle team assignment
+    let teamIds = [];
+    if (assignmentType === 'team') {
+      if (!team || !Array.isArray(team) || team.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'At least one team must be selected for team assignments'
+        });
+      }
+      teamIds = team;
+    }
+
+    // Validate teams exist
+    if (teamIds.length > 0) {
+      const teams = await StudentTeam.find({ _id: { $in: teamIds } });
+      if (teams.length !== teamIds.length) {
+        return res.status(400).json({
+          success: false,
+          message: 'One or more selected teams do not exist'
+        });
       }
     }
 
-    // Team assignment validation
-    if (!formData.assignToAll && formData.team.length === 0) {
-      newErrors.teams = 'Please select at least one team or choose "Assign to All Teams"';
+    const createdTasks = [];
+
+    // Create separate task for each team
+    for (const teamId of teamIds) {
+      const taskData = {
+        title,
+        description,
+        instructions: instructions || '',
+        dueDate: dueDateObj,
+        maxPoints: parseInt(maxPoints),
+        server: serverId,
+        team: teamId,
+        faculty: req.user.id,
+        assignmentType: assignmentType || 'team',
+        allowLateSubmissions: allowLateSubmissions || false,
+        maxAttempts: parseInt(maxAttempts) || 1,
+        allowFileUpload: allowFileUpload || false,
+        allowedFileTypes: allowedFileTypes || [],
+        maxFileSize: parseInt(maxFileSize) || 10485760,
+        priority: priority || 'medium',
+        status: publishImmediately ? 'active' : 'draft'
+      };
+
+      const task = new Task(taskData);
+      await task.save();
+      createdTasks.push(task);
+
+      // Send notifications if enabled and service is available
+      if (notifyStudents && publishImmediately && NotificationService) {
+        try {
+          await NotificationService.notifyTaskAssigned(task, teamId);
+        } catch (notifError) {
+          logWithTimestamp('warn', 'Failed to send task notification', {
+            taskId: task._id,
+            teamId: teamId,
+            error: notifError.message
+          });
+        }
+      }
     }
 
-    // File upload validation
-    if (formData.allowFileUpload && formData.allowedFileTypes.length === 0) {
-      newErrors.allowedFileTypes = 'Please select at least one allowed file type';
+    logWithTimestamp('info', 'Tasks created successfully', {
+      totalCreated: createdTasks.length,
+      taskIds: createdTasks.map(t => t._id)
+    });
+
+    res.status(201).json({
+      success: true,
+      message: `Successfully created ${createdTasks.length} task(s)`,
+      totalCreated: createdTasks.length,
+      tasks: createdTasks.map(task => ({
+        id: task._id,
+        title: task.title,
+        teamId: task.team,
+        status: task.status
+      }))
+    });
+
+  } catch (error) {
+    logWithTimestamp('error', 'Task creation failed', {
+      error: error.message,
+      stack: error.stack
+    });
+
+    res.status(500).json({
+      success: false,
+      message: 'Failed to create task',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+    });
+  }
+});
+
+// ✅ GET TASKS FOR FACULTY
+router.get('/faculty', verifyToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'faculty') {
+      return res.status(403).json({
+        success: false,
+        message: 'Faculty access required'
+      });
     }
 
-    // Advanced validation
-    if (formData.maxAttempts < 1 || formData.maxAttempts > 10) {
-      newErrors.maxAttempts = 'Maximum attempts must be between 1 and 10';
-    }
-
-    if (formData.maxFileSize < 1024 || formData.maxFileSize > 104857600) {
-      newErrors.maxFileSize = 'File size must be between 1KB and 100MB';
-    }
-
-    return newErrors;
-  }, [formData]);
-
-  // ✅ Enhanced Task Submission
-  const handleSubmit = useCallback(async (e) => {
-    e.preventDefault();
+    const { serverId, status, page = 1, limit = 10 } = req.query;
     
-    if (uiState.loading || uiState.submitAttempted) return;
+    let query = { faculty: req.user.id };
     
-    setUiState(prev => ({ 
-      ...prev, 
-      submitAttempted: true, 
-      loading: true, 
-      errors: {} 
-    }));
+    if (serverId) {
+      query.server = serverId;
+    }
     
+    if (status) {
+      query.status = status;
+    }
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    const tasks = await Task.find(query)
+      .populate('server', 'title code')
+      .populate('team', 'name members')
+      .populate('faculty', 'firstName lastName email')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(parseInt(limit));
+
+    const total = await Task.countDocuments(query);
+
+    res.json({
+      success: true,
+      tasks,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total,
+        pages: Math.ceil(total / parseInt(limit))
+      }
+    });
+
+  } catch (error) {
+    logWithTimestamp('error', 'Error fetching faculty tasks', {
+      error: error.message,
+      userId: req.user.id
+    });
+
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch tasks',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+    });
+  }
+});
+
+// ✅ GET TASKS FOR STUDENTS (Alternative endpoint for backwards compatibility)
+router.get('/student', verifyToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'student') {
+      return res.status(403).json({
+        success: false,
+        message: 'Student access required'
+      });
+    }
+
+    logWithTimestamp('info', 'Fetching tasks for student (legacy endpoint)', {
+      studentId: req.user.id
+    });
+
+    // Find teams the student belongs to
+    const studentTeams = await StudentTeam.find({
+      members: req.user.id
+    });
+
+    const teamIds = studentTeams.map(team => team._id);
+
+    logWithTimestamp('info', 'Student teams found', {
+      studentId: req.user.id,
+      teamCount: teamIds.length,
+      teamIds: teamIds
+    });
+
+    // Find tasks assigned to these teams
+    const tasks = await Task.find({
+      $or: [
+        { team: { $in: teamIds } },
+        { student: req.user.id } // Individual assignments
+      ],
+      status: 'active'
+    })
+    .populate('server', 'title code')
+    .populate('team', 'name members')
+    .populate('faculty', 'firstName lastName email')
+    .populate({
+      path: 'submissions',
+      match: { student: req.user.id }
+    })
+    .sort({ dueDate: 1 });
+
+    // Add submission status for each task
+    const tasksWithStatus = tasks.map(task => {
+      const taskObj = task.toObject();
+      const studentSubmission = task.submissions?.find(sub => 
+        sub.student.toString() === req.user.id
+      );
+
+      taskObj.submissionStatus = studentSubmission ? 'submitted' : 'not_submitted';
+      taskObj.submissionDate = studentSubmission?.submittedAt;
+      taskObj.grade = studentSubmission?.grade;
+      taskObj.feedback = studentSubmission?.feedback;
+      taskObj.isLate = studentSubmission?.isLate || false;
+
+      return taskObj;
+    });
+
+    logWithTimestamp('info', 'Tasks fetched successfully for student', {
+      studentId: req.user.id,
+      taskCount: tasksWithStatus.length
+    });
+
+    res.json({
+      success: true,
+      tasks: tasksWithStatus
+    });
+
+  } catch (error) {
+    logWithTimestamp('error', 'Error fetching student tasks', {
+      error: error.message,
+      studentId: req.user.id
+    });
+
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch tasks',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+    });
+  }
+});
+
+// ✅ GET TASK BY ID
+router.get('/server/:serverId', verifyToken, async (req, res) => {
+  try {
+    const { serverId } = req.params;
+    // Optionally, add role-based access checks here
+
+    const tasks = await Task.find({ server: serverId })
+      .populate('server', 'title code')
+      .populate('team', 'name members')
+      .populate('faculty', 'firstName lastName email');
+
+    res.json({
+      success: true,
+      tasks
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch tasks for server',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+    });
+  }
+});
+// ✅ SUBMIT TASK (File Upload)
+router.post('/:taskId/submit', verifyToken, upload.array('files', 10), async (req, res) => {
+  const submissionId = uuidv4();
+  
+  logWithTimestamp('info', '=== TASK SUBMISSION START ===', {
+    submissionId,
+    taskId: req.params.taskId,
+    userId: req.user?.id,
+    userRole: req.user?.role,
+    filesCount: req.files?.length || 0,
+    headers: {
+      'content-type': req.headers['content-type'],
+      'content-length': req.headers['content-length']
+    }
+  });
+
+  try {
+    // Validate user role
+    if (req.user.role !== 'student') {
+      logWithTimestamp('error', 'Access denied - non-student user', {
+        userId: req.user.id,
+        role: req.user.role
+      });
+      return res.status(403).json({
+        success: false,
+        message: 'Student access required.'
+      });
+    }
+
+    // Find and validate task
+    logWithTimestamp('info', 'Looking up task', { taskId: req.params.taskId });
+    const task = await Task.findById(req.params.taskId).populate('team');
+    
+    if (!task) {
+      logWithTimestamp('error', 'Task not found', { taskId: req.params.taskId });
+      return res.status(404).json({
+        success: false,
+        message: 'Task not found'
+      });
+    }
+
+    logWithTimestamp('info', 'Task found successfully', {
+      taskId: task._id,
+      title: task.title,
+      allowFileUpload: task.allowFileUpload,
+      maxFileSize: task.maxFileSize,
+      allowedFileTypes: task.allowedFileTypes,
+      teamInfo: task.team ? {
+        teamId: task.team._id,
+        teamName: task.team.name,
+        membersCount: task.team.members?.length || 0
+      } : null
+    });
+
+    // Check if student is assigned to this task
+    let isAssigned = false;
+    
+    if (task.assignmentType === 'individual' && task.student?.toString() === req.user.id) {
+      isAssigned = true;
+    } else if (task.team && task.team.members.some(member => member.toString() === req.user.id)) {
+      isAssigned = true;
+    }
+
+    if (!isAssigned) {
+      logWithTimestamp('error', 'Student not assigned to task', {
+        studentId: req.user.id,
+        taskId: task._id,
+        assignmentType: task.assignmentType
+      });
+      return res.status(403).json({
+        success: false,
+        message: 'You are not assigned to this task'
+      });
+    }
+
+    logWithTimestamp('info', 'Student assignment verified', {
+      studentId: req.user.id,
+      taskId: task._id
+    });
+
+    // Check submission attempts
+    const existingSubmissions = task.submissions?.filter(s => 
+      s.student.toString() === req.user.id
+    ) || [];
+
+    logWithTimestamp('info', 'Checking submission attempts', {
+      existingSubmissions: existingSubmissions.length,
+      maxAttempts: task.maxAttempts
+    });
+
+    if (existingSubmissions.length >= task.maxAttempts) {
+      logWithTimestamp('error', 'Maximum submission attempts reached', {
+        attempts: existingSubmissions.length,
+        maxAttempts: task.maxAttempts
+      });
+      return res.status(400).json({
+        success: false,
+        message: `Maximum ${task.maxAttempts} submission attempts reached`
+      });
+    }
+
+    // Extract submission data
+    const { comment, collaborators } = req.body;
+    
+    // Parse collaborators if it's a string
+    let collaboratorsList = [];
+    if (collaborators) {
+      try {
+        collaboratorsList = typeof collaborators === 'string' 
+          ? JSON.parse(collaborators) 
+          : collaborators;
+      } catch (parseError) {
+        logWithTimestamp('error', 'Failed to parse collaborators', {
+          collaborators,
+          error: parseError.message
+        });
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid collaborators format'
+        });
+      }
+    }
+
+    // Validate required fields
+    if (!comment || comment.trim().length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Submission comment is required'
+      });
+    }
+
+    // Process uploaded files
+    const processedFiles = [];
+    
+    if (req.files && req.files.length > 0) {
+      logWithTimestamp('info', 'Processing uploaded files', {
+        filesCount: req.files.length
+      });
+
+      for (let index = 0; index < req.files.length; index++) {
+        const file = req.files[index];
+        
+        logWithTimestamp('info', `Processing file ${index + 1}`, {
+          originalname: file.originalname,
+          filename: file.filename,
+          size: file.size,
+          mimetype: file.mimetype
+        });
+
+        // Validate file type if restrictions exist
+        if (task.allowedFileTypes && task.allowedFileTypes.length > 0) {
+          const fileExt = path.extname(file.originalname).toLowerCase().substring(1);
+          if (!task.allowedFileTypes.includes(fileExt) && !task.allowedFileTypes.includes('all')) {
+            logWithTimestamp('error', 'File type not allowed', {
+              filename: file.originalname,
+              extension: fileExt,
+              allowedTypes: task.allowedFileTypes
+            });
+            
+            // Clean up uploaded file
+            try {
+              await fs.promises.unlink(file.path);
+            } catch (unlinkError) {
+              logWithTimestamp('error', 'Failed to cleanup rejected file', {
+                path: file.path,
+                error: unlinkError.message
+              });
+            }
+            
+            return res.status(400).json({
+              success: false,
+              message: `File type .${fileExt} not allowed. Allowed types: ${task.allowedFileTypes.join(', ')}`
+            });
+          }
+        }
+
+        processedFiles.push({
+          filename: file.filename,
+          originalName: file.originalname,
+          path: file.path,
+          size: file.size,
+          mimetype: file.mimetype,
+          uploadedAt: new Date()
+        });
+
+        logWithTimestamp('info', `File ${index + 1} processed successfully`, {
+          originalname: file.originalname,
+          filename: file.filename
+        });
+      }
+    }
+
+    logWithTimestamp('info', 'All files processed successfully', {
+      processedFiles: processedFiles.length
+    });
+
+    // Create submission object
+    const submission = {
+      id: submissionId,
+      student: req.user.id,
+      comment: comment,
+      files: processedFiles,
+      collaborators: collaboratorsList,
+      submittedAt: new Date(),
+      status: 'submitted',
+      attempt: existingSubmissions.length + 1,
+      isLate: new Date() > new Date(task.dueDate),
+      ipAddress: req.ip,
+      userAgent: req.get('User-Agent')
+    };
+
+    logWithTimestamp('info', 'Created submission object', {
+      submissionId: submission.id,
+      studentId: submission.student,
+      filesCount: submission.files.length,
+      collaboratorsCount: submission.collaborators.length,
+      attempt: submission.attempt,
+      isLate: submission.isLate
+    });
+
+    // Add submission to task
+    if (!task.submissions) {
+      task.submissions = [];
+    }
+    task.submissions.push(submission);
+    task.updatedAt = new Date();
+
+    // Save task with new submission
+    await task.save();
+
+    logWithTimestamp('info', 'Task submission saved to database', {
+      taskId: task._id,
+      submissionId: submission.id
+    });
+
+    // Send notification to faculty if service is available
+    if (NotificationService) {
+      try {
+        const student = await Student.findById(req.user.id);
+        await NotificationService.notifyTaskSubmitted(task, submission, student);
+      } catch (notifError) {
+        logWithTimestamp('warn', 'Failed to send submission notification', {
+          error: notifError.message
+        });
+      }
+    }
+
+    logWithTimestamp('info', '=== TASK SUBMISSION COMPLETED SUCCESSFULLY ===', {
+      submissionId: submission.id,
+      taskId: task._id,
+      studentId: req.user.id,
+      filesCount: processedFiles.length
+    });
+
+    res.status(201).json({
+      success: true,
+      message: 'Task submitted successfully',
+      submission: {
+        id: submission.id,
+        submittedAt: submission.submittedAt,
+        filesCount: processedFiles.length,
+        status: submission.status,
+        attempt: submission.attempt,
+        isLate: submission.isLate
+      }
+    });
+
+  } catch (error) {
+    logWithTimestamp('error', 'Task submission error occurred', {
+      error: error.message,
+      stack: error.stack,
+      taskId: req.params.taskId,
+      userId: req.user?.id
+    });
+    
+    // Clean up uploaded files on error
+    if (req.files) {
+      logWithTimestamp('info', 'Cleaning up files due to error', {
+        filesCount: req.files.length
+      });
+
+      for (const file of req.files) {
+        try {
+          await fs.promises.unlink(file.path);
+          logWithTimestamp('info', 'Cleaned up file', { path: file.path });
+        } catch (cleanupError) {
+          logWithTimestamp('error', 'Failed to cleanup file', {
+            path: file.path,
+            error: cleanupError.message
+          });
+        }
+      }
+    }
+    
+    res.status(500).json({ 
+      success: false,
+      message: error.message || 'Failed to submit task',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+    });
+  }
+});
+
+// ✅ UPDATE TASK
+router.put('/:taskId', verifyToken, async (req, res) => {
+  try {
+    console.log("inside the taskId")
+    if (req.user.role !== 'faculty') {
+      return res.status(403).json({
+        success: false,
+        message: 'Faculty access required'
+      });
+    }
+
+    const task = await Task.findById(req.params.taskId);
+    
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        message: 'Task not found'
+      });
+    }
+
+    if (task.faculty.toString() !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: 'You can only update your own tasks'
+      });
+    }
+
+    // Update allowed fields
+    const allowedUpdates = [
+      'title', 'description', 'instructions', 'dueDate', 'maxPoints',
+      'allowLateSubmissions', 'maxAttempts', 'allowFileUpload',
+      'allowedFileTypes', 'maxFileSize', 'priority', 'status'
+    ];
+
+    allowedUpdates.forEach(field => {
+      if (req.body[field] !== undefined) {
+        task[field] = req.body[field];
+      }
+    });
+
+    task.updatedAt = new Date();
+    await task.save();
+
+    logWithTimestamp('info', 'Task updated successfully', {
+      taskId: task._id,
+      updatedBy: req.user.id
+    });
+
+    res.json({
+      success: true,
+      message: 'Task updated successfully',
+      task
+    });
+
+  } catch (error) {
+    logWithTimestamp('error', 'Error updating task', {
+      error: error.message,
+      taskId: req.params.taskId,
+      userId: req.user.id
+    });
+
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update task',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+    });
+  }
+});
+
+// ✅ DELETE TASK
+router.delete('/:taskId', verifyToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'faculty') {
+      return res.status(403).json({
+        success: false,
+        message: 'Faculty access required'
+      });
+    }
+
+    const task = await Task.findById(req.params.taskId);
+    
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        message: 'Task not found'
+      });
+    }
+
+    if (task.faculty.toString() !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: 'You can only delete your own tasks'
+      });
+    }
+
+    await Task.findByIdAndDelete(req.params.taskId);
+
+    logWithTimestamp('info', 'Task deleted successfully', {
+      taskId: req.params.taskId,
+      deletedBy: req.user.id
+    });
+
+    res.json({
+      success: true,
+      message: 'Task deleted successfully'
+    });
+
+  } catch (error) {
+    logWithTimestamp('error', 'Error deleting task', {
+      error: error.message,
+      taskId: req.params.taskId,
+      userId: req.user.id
+    });
+
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete task',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+    });
+  }
+});
+
+// ✅ GRADE SUBMISSION
+router.post('/:taskId/grade', verifyToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'faculty') {
+      return res.status(403).json({
+        success: false,
+        message: 'Faculty access required'
+      });
+    }
+
+    const { studentId, grade, feedback } = req.body;
+
+    if (!studentId || grade === undefined) {
+      return res.status(400).json({
+        success: false,
+        message: 'Student ID and grade are required'
+      });
+    }
+
+    const task = await Task.findById(req.params.taskId);
+    
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        message: 'Task not found'
+      });
+    }
+
+    if (task.faculty.toString() !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: 'You can only grade your own tasks'
+      });
+    }
+
+    // Find the submission
+    const submission = task.submissions.find(sub => 
+      sub.student.toString() === studentId
+    );
+
+    if (!submission) {
+      return res.status(404).json({
+        success: false,
+        message: 'Submission not found'
+      });
+    }
+
+    // Validate grade
+    if (grade < 0 || grade > task.maxPoints) {
+      return res.status(400).json({
+        success: false,
+        message: `Grade must be between 0 and ${task.maxPoints}`
+      });
+    }
+
+    // Update submission
+    submission.grade = grade;
+    submission.feedback = feedback || '';
+    submission.status = 'graded';
+    submission.gradedAt = new Date();
+    submission.gradedBy = req.user.id;
+
+    await task.save();
+
+    // Send notification to student if service is available
+    if (NotificationService) {
+      try {
+        const student = await Student.findById(studentId);
+        await NotificationService.notifyTaskVerified(task, student, grade, feedback);
+      } catch (notifError) {
+        logWithTimestamp('warn', 'Failed to send grading notification', {
+          error: notifError.message
+        });
+      }
+    }
+
+    logWithTimestamp('info', 'Submission graded successfully', {
+      taskId: task._id,
+      studentId: studentId,
+      grade: grade,
+      gradedBy: req.user.id
+    });
+
+    res.json({
+      success: true,
+      message: 'Submission graded successfully',
+      submission: {
+        id: submission.id,
+        grade: submission.grade,
+        feedback: submission.feedback,
+        gradedAt: submission.gradedAt,
+        status: submission.status
+      }
+    });
+
+  } catch (error) {
+    logWithTimestamp('error', 'Error grading submission', {
+      error: error.message,
+      taskId: req.params.taskId,
+      userId: req.user.id
+    });
+
+    res.status(500).json({
+      success: false,
+      message: 'Failed to grade submission',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+    });
+  }
+});
+
+// ✅ CHECK TASK PERMISSIONS AND STATUS
+router.get('/:taskId/check', verifyToken, async (req, res) => {
+  try {
+    logWithTimestamp('info', 'Task check request', {
+      taskId: req.params.taskId,
+      userId: req.user?.id
+    });
+
+    const task = await Task.findById(req.params.taskId).populate('team');
+    
+    if (!task) {
+      logWithTimestamp('error', 'Task not found in check', { taskId: req.params.taskId });
+      return res.status(404).json({
+        success: false,
+        message: 'Task not found'
+      });
+    }
+
+    // Check student assignment
+    let isAssigned = false;
+    if (req.user.role === 'student') {
+      if (task.assignmentType === 'individual' && task.student?.toString() === req.user.id) {
+        isAssigned = true;
+      } else if (task.team && task.team.members.some(member => member.toString() === req.user.id)) {
+        isAssigned = true;
+      }
+    } else if (req.user.role === 'faculty') {
+      isAssigned = task.faculty.toString() === req.user.id;
+    }
+    
+    logWithTimestamp('info', 'Task check completed', {
+      taskId: task._id,
+      title: task.title,
+      isAssigned: isAssigned,
+      allowFileUpload: task.allowFileUpload,
+      userRole: req.user.role
+    });
+
+    res.json({
+      success: true,
+      task: {
+        id: task._id,
+        title: task.title,
+        allowFileUpload: task.allowFileUpload,
+        maxFileSize: task.maxFileSize,
+        allowedFileTypes: task.allowedFileTypes,
+        maxAttempts: task.maxAttempts,
+        dueDate: task.dueDate,
+        status: task.status
+      },
+      permissions: {
+        isAssigned: isAssigned,
+        canSubmit: req.user.role === 'student' && isAssigned && task.status === 'active',
+        canGrade: req.user.role === 'faculty' && isAssigned,
+        canEdit: req.user.role === 'faculty' && isAssigned
+      }
+    });
+
+  } catch (error) {
+    logWithTimestamp('error', 'Task check error', {
+      error: error.message,
+      taskId: req.params.taskId
+    });
+    
+    res.status(500).json({
+      success: false,
+      message: 'Error checking task'
+    });
+  }
+});
+
+// ✅ HEALTH CHECK FOR TASKS ENDPOINT
+router.get('/health', (req, res) => {
+  res.json({
+    success: true,
+    message: 'Task routes are working',
+    timestamp: new Date().toISOString(),
+    routes: [
+      'GET /api/tasks/student-tasks',
+      'GET /api/tasks/student',
+      'GET /api/tasks/faculty',
+      'POST /api/tasks/create',
+      'POST /api/tasks/:taskId/submit',
+      'GET /api/tasks/:taskId/check',
+      'GET /api/tasks/health'
+    ]
+  });
+});
+
+// ✅ DEBUG ROUTE (Development only)
+if (process.env.NODE_ENV === 'development') {
+  router.get('/debug/student-info', verifyToken, async (req, res) => {
     try {
-      const validationErrors = validateForm();
-      if (Object.keys(validationErrors).length > 0) {
-        setUiState(prev => ({ ...prev, errors: validationErrors }));
-        return;
+      if (req.user.role !== 'student') {
+        return res.status(403).json({
+          success: false,
+          message: 'Student access required'
+        });
       }
+
+      // Get student info
+      const student = await Student.findById(req.user.id);
       
-      const isOnline = await checkNetworkStatus();
-      if (!isOnline) {
-        throw new Error('Network connection unavailable. Please check your internet connection.');
-      }
-       
-       // ✅ FIXED: Backend expects separate tasks for each team, not array
-       const selectedTeams = formData.assignToAll 
-         ? uiState.teams.map(team => team._id) 
-         : Array.isArray(formData.team) ? formData.team : [];
+      // Get student's teams
+      const teams = await StudentTeam.find({ members: req.user.id })
+        .populate('members', 'firstName lastName email');
 
-       // Ensure we have valid team IDs
-       const validTeamIds = selectedTeams.filter(id => id && typeof id === 'string' && id.length === 24);
-       
-       console.log('🔍 Team data debug:', {
-         assignToAll: formData.assignToAll,
-         rawTeams: formData.team,
-         selectedTeams: selectedTeams,
-         validTeamIds: validTeamIds,
-         teamsCount: validTeamIds.length
-       });
+      // Get all tasks in the system (for debugging)
+      const allTasks = await Task.find({})
+        .populate('team', 'name members')
+        .populate('server', 'title code')
+        .select('title team server assignmentType status');
 
-       if (validTeamIds.length === 0) {
-         throw new Error('No valid teams selected. Please select at least one team.');
-       }
+      res.json({
+        success: true,
+        debug: {
+          student: {
+            id: student._id,
+            name: `${student.firstName} ${student.lastName}`,
+            email: student.email
+          },
+          teams: teams.map(team => ({
+            id: team._id,
+            name: team.name,
+            members: team.members.length,
+            projectServer: team.projectServer
+          })),
+          allTasks: allTasks.map(task => ({
+            id: task._id,
+            title: task.title,
+            teamId: task.team?._id,
+            teamName: task.team?.name,
+            serverCode: task.server?.code,
+            assignmentType: task.assignmentType,
+            status: task.status,
+            isStudentInTeam: task.team?.members.includes(req.user.id)
+          }))
+        }
+      });
 
-       // ✅ FIXED: Proper null/undefined checks for team data
-       const availableTeams = Array.isArray(uiState.teams) ? uiState.teams : [];
-       const selectedTeamIds = Array.isArray(formData.team) ? formData.team : [];
-       
-       const selectedTeams = formData.assignToAll 
-         ? availableTeams.map(team => team?._id).filter(Boolean)
-         : selectedTeamIds.filter(Boolean);
+    } catch (error) {
+      console.error('Debug route error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Debug failed',
+        error: error.message
+      });
+    }
+  });
+}
 
-       // Ensure we have valid team IDs with proper validation
-       const validTeamIds = selectedTeams.filter(id => {
-         return id && 
-                typeof id === 'string' && 
-                id.length === 24 && 
-                /^[0-9a-fA-F]{24}$/.test(id); // Valid MongoDB ObjectId format
-       });
-       
-       console.log('🔍 Team data debug:', {
-         assignToAll: formData.assignToAll,
-         availableTeams: availableTeams.length,
-         rawFormTeam: formData.team,
-         selectedTeamIds: selectedTeamIds,
-         selectedTeams: selectedTeams,
-         validTeamIds: validTeamIds,
-         teamsCount: validTeamIds.length
-       });
+// ✅ ERROR HANDLING MIDDLEWARE
+router.use((error, req, res, next) => {
+  logWithTimestamp('error', 'Unhandled route error', {
+    error: error.message,
+    stack: error.stack,
+    url: req.originalUrl,
+    method: req.method,
+    userId: req.user?.id
+  });
 
-       if (validTeamIds.length === 0) {
-         throw new Error('No valid teams selected. Please select at least one team.');
-       }
+  if (error instanceof multer.MulterError) {
+    if (error.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({
+        success: false,
+        message: 'File size too large (max 50MB)'
+      });
+    }
+    if (error.code === 'LIMIT_FILE_COUNT') {
+      return res.status(400).json({
+        success: false,
+        message: 'Too many files (max 10 files)'
+      });
+    }
+  }
+  
+  res.status(500).json({
+    success: false,
+    message: error.message || 'Internal server error',
+    error: process.env.NODE_ENV === 'development' ? error.stack : undefined
+  });
+});
 
-       // ✅ FIXED: Send single request with team array (backend will handle multiple teams)
-       const requestBody = {
-         title: formData.title.trim(),
-         description: formData.description.trim(),
-         instructions: formData.instructions.trim(),
-         rubric: formData.rubric.trim(),
-         dueDate: formData.dueDate,
-         maxPoints: parseInt(formData.maxPoints),
-         serverId: serverId,
-         team: validTeamIds, // Send as array - backend will create tasks for each team
-         assignmentType: formData.assignmentType,
-         allowLateSubmissions: formData.allowLateSubmissions,
-         maxAttempts: parseInt(formData.maxAttempts),
-         allowFileUpload: formData.allowFileUpload,
-         allowedFileTypes: formData.allowedFileTypes,
-         maxFileSize: parseInt(formData.maxFileSize),
-         priority: formData.priority,
-         autoGrade: formData.autoGrade,
-         publishImmediately: formData.publishImmediately,
-         notifyStudents: formData.notifyStudents
-       };
+console.log('📋 Task routes loaded successfully');
 
-       console.log('📤 Submitting task creation request:', {
-         ...requestBody,
-         teamCount: validTeamIds.length,
-         teamIds: validTeamIds
-       });
-
-       const response = await fetch(`${API_BASE}/tasks/create`, {
-         method: 'POST',
-         headers: { 
-           'Content-Type': 'application/json',
-           'Accept': 'application/json'
-         },
-         credentials: 'include',
-         body: JSON.stringify(requestBody)
-       });
-
-       if (!response.ok) {
-         const errorText = await response.text();
-         console.error('❌ Task creation failed:', {
-           status: response.status,
-           statusText: response.statusText,
-           errorText: errorText
-         });
-         
-         let errorData;
-         try {
-           errorData = JSON.parse(errorText);
-         } catch (parseError) {
-           errorData = { message: errorText };
-         }
-         
-         // Enhanced error handling
-         if (response.status === 400) {
-           if (errorData.message && errorData.message.includes('team')) {
-             throw new Error('Team assignment error: Please ensure you have selected valid teams.');
-           } else if (errorData.message && errorData.message.includes('validation')) {
-             throw new Error(`Validation error: ${errorData.message}`);
-           } else {
-             throw new Error(errorData.message || 'Invalid request data. Please check all fields.');
-           }
-         } else if (response.status === 401) {
-           throw new Error('Authentication failed. Please log in again.');
-         } else if (response.status === 403) {
-           throw new Error('Access denied. You may not have permission to create tasks for this server.');
-         } else if (response.status === 404) {
-           throw new Error('Server not found. Please check your server selection.');
-         } else {
-           throw new Error(`Server error (${response.status}): ${errorData.message || errorText}`);
-         }
-       }
-
-       const data = await response.json();
-       console.log('✅ Task creation response:', data);
-
-       if (data.success) {
-         console.log('🎉 Tasks created successfully:', {
-           totalCreated: data.totalCreated,
-           tasksCreated: data.tasks?.length || 0
-         });
-         
-         if (mountedRef.current) {
-           onTaskCreated?.(data);
-           onClose?.();
-         }
-       } else {
-         console.error('❌ Task creation failed:', data.message);
-         if (mountedRef.current) {
-           setUiState(prev => ({ 
-             ...prev, 
-             errors: { submit: data.message || 'Failed to create task' }
-           }));
-         }
-       }
-     } catch (error) {
-       console.error('❌ Network error:', error);
-       if (mountedRef.current) {
-         let errorMessage = error.message || 'Network error. Please try again.';
-         
-         if (error.name === 'AbortError' || error.message.includes('timeout')) {
-           errorMessage = 'Request timed out. Please check your connection and try again.';
-         } else if (error.message.includes('Failed to fetch')) {
-           errorMessage = 'Unable to connect to server. Please check if the server is running.';
-         }
-         
-         setUiState(prev => ({ 
-           ...prev, 
-           errors: { submit: errorMessage }
-         }));
-       }
-     } finally {
-       if (mountedRef.current) {
-         setUiState(prev => ({ 
-           ...prev, 
-           loading: false, 
-           submitAttempted: false 
-         }));
-       }
-     }
-   }, [uiState.loading, uiState.submitAttempted, uiState.teams, validateForm, checkNetworkStatus, formData, serverId, API_BASE, onTaskCreated, onClose]);
-
-   // ✅ Helper Functions
-   const formatFileSize = useCallback((bytes) => {
-     if (bytes === 0) return '0 Bytes';
-     const k = 1024;
-     const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-     const i = Math.floor(Math.log(bytes) / Math.log(k));
-     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-   }, []);
-
-   const getMinDateTime = useCallback(() => {
-     const now = new Date();
-     now.setMinutes(now.getMinutes() + 30);
-     return now.toISOString().slice(0, 16);
-   }, []);
-
-   // ✅ MEMOIZED Components for better performance
-
-   const TaskHeader = useMemo(() => (
-     <div className="flex items-center justify-between p-6 border-b border-gray-200">
-       <div className="flex items-center space-x-4">
-         <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-           <FileText className="w-5 h-5 text-blue-600" aria-hidden="true" />
-         </div>
-         <div>
-           <h1 className="text-xl font-semibold text-gray-900">Create New Task</h1>
-           <p className="text-gray-600">
-             {uiState.serverInfo ? `Server: ${uiState.serverInfo.title}` : serverTitle || 'Assign task to teams'}
-           </p>
-         </div>
-       </div>
-       
-       <div className="flex items-center space-x-2">
-         <div className="flex items-center space-x-2">
-           {uiState.networkStatus === 'online' && (
-             <div className="flex items-center space-x-1 text-green-600" role="status" aria-label="Online">
-               <Wifi className="w-4 h-4" aria-hidden="true" />
-               <span className="text-xs">Online</span>
-             </div>
-           )}
-           {uiState.networkStatus === 'offline' && (
-             <div className="flex items-center space-x-1 text-red-600" role="status" aria-label="Offline">
-               <WifiOff className="w-4 h-4" aria-hidden="true" />
-               <span className="text-xs">Offline</span>
-             </div>
-           )}
-           {uiState.networkStatus === 'checking' && (
-             <div className="flex items-center space-x-1 text-yellow-600" role="status" aria-label="Checking connection">
-               <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
-               <span className="text-xs">Checking...</span>
-             </div>
-           )}
-         </div>
-         
-         {uiState.teams.length > 0 && (
-           <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-medium" role="status">
-             {uiState.teams.length} teams available
-           </span>
-         )}
-         <button
-           onClick={onClose}
-           className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-           aria-label="Close task creator"
-         >
-           <X className="w-5 h-5" aria-hidden="true" />
-         </button>
-       </div>
-     </div>
-   ), [uiState.serverInfo, uiState.networkStatus, uiState.teams.length, serverTitle, onClose]);
-
-   const NetworkError = useMemo(() => {
-     if (uiState.networkStatus === 'online' && !uiState.errors.teams) return null;
-     
-     return (
-       <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg" role="alert">
-         <div className="flex items-start space-x-2">
-           <AlertCircle className="w-5 h-5 text-red-500 mt-0.5" aria-hidden="true" />
-           <div className="flex-1">
-             <h4 className="text-sm font-medium text-red-800">Connection Issue</h4>
-             <p className="text-sm text-red-700 mt-1">
-               {uiState.errors.teams || 'Unable to connect to the server. Please check your internet connection.'}
-             </p>
-             <div className="mt-3 flex items-center space-x-3">
-               <button
-                 onClick={handleRefreshTeams}
-                 disabled={uiState.loadingTeams}
-                 className="flex items-center space-x-2 px-3 py-1 bg-red-100 text-red-800 rounded text-sm hover:bg-red-200 transition-colors disabled:opacity-50"
-                 aria-label="Retry connection"
-               >
-                 <RefreshCw className={`w-4 h-4 ${uiState.loadingTeams ? 'animate-spin' : ''}`} aria-hidden="true" />
-                 <span>Retry Connection</span>
-               </button>
-               
-               <button
-                 onClick={checkNetworkStatus}
-                 className="text-sm text-red-600 hover:text-red-700 underline"
-               >
-                 Test Network
-               </button>
-               
-               {uiState.fetchAttempts > 0 && (
-                 <span className="text-xs text-red-600">
-                   Attempt {uiState.fetchAttempts}/{MAX_RETRY_ATTEMPTS}
-                 </span>
-               )}
-             </div>
-           </div>
-         </div>
-       </div>
-     );
-   }, [uiState.networkStatus, uiState.errors.teams, uiState.loadingTeams, uiState.fetchAttempts, handleRefreshTeams, checkNetworkStatus]);
-
-   // ✅ OPTIMIZED Basic Information Section
-   const BasicInfoSection = useMemo(() => (
-     <div className="space-y-6">
-       {NetworkError}
-       
-       <div>
-         <h2 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
-           <Info className="w-5 h-5 mr-2 text-blue-600" aria-hidden="true" />
-           Basic Information
-         </h2>
-         
-         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-           <div className="md:col-span-2">
-             <label htmlFor="task-title" className="block text-sm font-medium text-gray-700 mb-2">
-               Task Title *
-             </label>
-             <input
-               type="text"
-               id="task-title"
-               name="title"
-               value={formData.title}
-               onChange={handleInputChange}
-               className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
-                 validationErrors.title ? 'border-red-300' : 'border-gray-300'
-               }`}
-               placeholder="Enter a clear, descriptive title..."
-               maxLength={100}
-               aria-describedby="title-error title-counter"
-               aria-invalid={validationErrors.title ? 'true' : 'false'}
-               required
-             />
-             {validationErrors.title && (
-               <p id="title-error" className="mt-1 text-sm text-red-600" role="alert">
-                 {validationErrors.title}
-               </p>
-             )}
-             <p id="title-counter" className="mt-1 text-xs text-gray-500">
-               {formData.title.length}/100 characters
-             </p>
-           </div>
-           
-           <div>
-             <label htmlFor="due-date" className="block text-sm font-medium text-gray-700 mb-2">
-               Due Date & Time *
-             </label>
-             <input
-               type="datetime-local"
-               id="due-date"
-               name="dueDate"
-               value={formData.dueDate}
-               onChange={handleInputChange}
-               min={getMinDateTime()}
-               className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
-                 validationErrors.dueDate ? 'border-red-300' : 'border-gray-300'
-               }`}
-               aria-describedby="due-date-error"
-               aria-invalid={validationErrors.dueDate ? 'true' : 'false'}
-               required
-             />
-             {validationErrors.dueDate && (
-               <p id="due-date-error" className="mt-1 text-sm text-red-600" role="alert">
-                 {validationErrors.dueDate}
-               </p>
-             )}
-           </div>
-           
-           <div>
-             <label htmlFor="max-points" className="block text-sm font-medium text-gray-700 mb-2">
-               Maximum Points *
-             </label>
-             <input
-               type="number"
-               id="max-points"
-               name="maxPoints"
-               value={formData.maxPoints}
-               onChange={handleInputChange}
-               min="1"
-               max="1000"
-               className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
-                 validationErrors.maxPoints ? 'border-red-300' : 'border-gray-300'
-               }`}
-               aria-describedby="max-points-error"
-               aria-invalid={validationErrors.maxPoints ? 'true' : 'false'}
-               required
-             />
-             {validationErrors.maxPoints && (
-               <p id="max-points-error" className="mt-1 text-sm text-red-600" role="alert">
-                 {validationErrors.maxPoints}
-               </p>
-             )}
-           </div>
-           
-           <div className="md:col-span-2">
-             <fieldset>
-               <legend className="block text-sm font-medium text-gray-700 mb-2">
-                 Priority Level
-               </legend>
-               <div className="grid grid-cols-2 md:grid-cols-4 gap-3" role="radiogroup">
-                 {priorityOptions.map(option => (
-                   <label
-                     key={option.value}
-                     className={`flex items-center p-3 border-2 rounded-lg cursor-pointer transition-all ${
-                       formData.priority === option.value
-                         ? option.color
-                         : 'border-gray-200 hover:border-gray-300'
-                     }`}
-                   >
-                     <input
-                       type="radio"
-                       name="priority"
-                       value={option.value}
-                       checked={formData.priority === option.value}
-                       onChange={handleInputChange}
-                       className="sr-only"
-                     />
-                     <span className="mr-2" aria-hidden="true">{option.icon}</span>
-                     <span className="text-sm font-medium">
-                       {option.label}
-                     </span>
-                   </label>
-                 ))}
-               </div>
-             </fieldset>
-           </div>
-           
-           <div className="md:col-span-2">
-             <label htmlFor="task-description" className="block text-sm font-medium text-gray-700 mb-2">
-               Description *
-             </label>
-             <textarea
-               id="task-description"
-               name="description"
-               value={formData.description}
-               onChange={handleInputChange}
-               rows={4}
-               className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none transition-colors ${
-                 validationErrors.description ? 'border-red-300' : 'border-gray-300'
-               }`}
-               placeholder="Provide a detailed description of the task requirements..."
-               maxLength={2000}
-               aria-describedby="description-error description-counter"
-               aria-invalid={validationErrors.description ? 'true' : 'false'}
-               required
-             />
-             {validationErrors.description && (
-               <p id="description-error" className="mt-1 text-sm text-red-600" role="alert">
-                 {validationErrors.description}
-               </p>
-             )}
-             <p id="description-counter" className="mt-1 text-xs text-gray-500">
-               {formData.description.length}/2000 characters
-             </p>
-           </div>
-         </div>
-       </div>
-     </div>
-   ), [NetworkError, formData.title, formData.dueDate, formData.maxPoints, formData.priority, formData.description, validationErrors, handleInputChange, priorityOptions, getMinDateTime]);
-
-   // ✅ OPTIMIZED Team Assignment Section
-   const TeamAssignmentSection = useMemo(() => (
-     <div className="space-y-6">
-       <div>
-         <div className="flex items-center justify-between mb-4">
-           <h2 className="text-lg font-medium text-gray-900 flex items-center">
-             <Users className="w-5 h-5 mr-2 text-green-600" aria-hidden="true" />
-             Team Assignment
-           </h2>
-           <button
-             type="button"
-             onClick={handleRefreshTeams}
-             disabled={uiState.loadingTeams}
-             className="flex items-center space-x-2 px-3 py-1 text-sm text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50"
-             aria-label="Refresh teams list"
-           >
-             <RefreshCw className={`w-4 h-4 ${uiState.loadingTeams ? 'animate-spin' : ''}`} aria-hidden="true" />
-             <span>Refresh Teams</span>
-           </button>
-         </div>
-         
-         {uiState.loadingTeams ? (
-           <div className="flex items-center justify-center py-12 bg-gray-50 rounded-lg" role="status" aria-live="polite">
-             <div className="text-center">
-               <Loader2 className="w-8 h-8 animate-spin text-blue-600 mx-auto mb-3" aria-hidden="true" />
-               <p className="text-gray-600 mb-2">Loading teams from server...</p>
-               <p className="text-sm text-gray-500">
-                 This may take a few moments
-                 {uiState.fetchAttempts > 1 && ` (Attempt ${uiState.fetchAttempts}/${MAX_RETRY_ATTEMPTS})`}
-               </p>
-             </div>
-           </div>
-         ) : uiState.teams.length > 0 ? (
-           <div className="space-y-4">
-             <div className="flex items-center p-3 bg-green-50 border border-green-200 rounded-lg" role="status">
-               <CheckCircle className="w-5 h-5 text-green-600 mr-2" aria-hidden="true" />
-               <span className="text-sm text-green-800">
-                 Successfully loaded {uiState.teams.length} teams from server
-               </span>
-             </div>
-             
-             <div className="flex items-center p-4 bg-blue-50 border border-blue-200 rounded-lg">
-               <input
-                 type="checkbox"
-                 id="assign-to-all"
-                 name="assignToAll"
-                 checked={formData.assignToAll}
-                 onChange={handleInputChange}
-                 className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-               />
-               <label htmlFor="assign-to-all" className="ml-3 flex items-center cursor-pointer">
-                 <UserPlus className="w-4 h-4 text-blue-600 mr-2" aria-hidden="true" />
-                 <span className="text-sm font-medium text-blue-900">
-                   Assign to all teams ({uiState.teams.length} teams)
-                 </span>
-               </label>
-             </div>
-             
-             {!formData.assignToAll && (
-               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                 {uiState.teams.map(team => (
-                   <div
-                     key={team._id}
-                     className={`relative flex items-center p-4 border-2 rounded-lg cursor-pointer transition-all ${
-                       formData.team.includes(team._id)
-                         ? 'border-blue-500 bg-blue-50'
-                         : 'border-gray-200 hover:border-gray-300'
-                     }`}
-                   >
-                     <input
-                       type="checkbox"
-                       id={`team-${team._id}`}
-                       name="team"
-                       value={team._id}
-                       checked={formData.team.includes(team._id)}
-                       onChange={handleInputChange}
-                       className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                     />
-                     <label htmlFor={`team-${team._id}`} className="ml-3 flex-1 cursor-pointer">
-                       <div className="flex items-center justify-between">
-                         <p className="text-sm font-medium text-gray-900">{team.name}</p>
-                         <span className="text-xs text-gray-500">
-                           {team.members?.length || 0} members
-                         </span>
-                       </div>
-                       <p className="text-xs text-gray-600 mt-1">
-                         {team.description || 'No description available'}
-                       </p>
-                     </label>
-                     {formData.team.includes(team._id) && (
-                       <CheckCircle className="w-5 h-5 text-blue-600 absolute top-2 right-2" aria-hidden="true" />
-                     )}
-                   </div>
-                 ))}
-               </div>
-             )}
-             
-             <div className="p-3 bg-gray-50 rounded-lg" role="status" aria-live="polite">
-               <p className="text-sm text-gray-600">
-                 {formData.assignToAll 
-                   ? `Task will be assigned to all ${uiState.teams.length} teams`
-                   : `Selected ${formData.team.length} of ${uiState.teams.length} teams`
-                 }
-               </p>
-             </div>
-           </div>
-         ) : (
-           <div className="text-center py-12 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300" role="alert">
-             <Users className="w-16 h-16 text-gray-300 mx-auto mb-4" aria-hidden="true" />
-             <h3 className="text-lg font-medium text-gray-600 mb-2">No Teams Available</h3>
-             <p className="text-gray-500 mb-4">
-               {uiState.errors.teams || 'No teams found in this server. Students need to create teams before you can assign tasks.'}
-             </p>
-             <div className="space-y-2">
-               <button
-                 type="button"
-                 onClick={handleRefreshTeams}
-                 disabled={uiState.loadingTeams}
-                 className="inline-flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
-               >
-                 <RefreshCw className={`w-4 h-4 ${uiState.loadingTeams ? 'animate-spin' : ''}`} aria-hidden="true" />
-                 <span>Retry Loading Teams</span>
-               </button>
-               
-               {uiState.networkStatus === 'offline' && (
-                 <p className="text-sm text-red-600" role="alert">
-                   ⚠️ Network connection issue detected. Please check your internet connection.
-                 </p>
-               )}
-             </div>
-           </div>
-         )}
-       </div>
-     </div>
-   ), [uiState.teams, uiState.loadingTeams, uiState.fetchAttempts, uiState.errors.teams, uiState.networkStatus, formData.assignToAll, formData.team, handleInputChange, handleRefreshTeams]);
-
-   // ✅ OPTIMIZED File Upload Section
-   const FileUploadSection = useMemo(() => (
-     <div className="space-y-6">
-       <div>
-         <h2 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
-           <Upload className="w-5 h-5 mr-2 text-purple-600" aria-hidden="true" />
-           File Upload Settings
-         </h2>
-         
-         <div className="space-y-4">
-           <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-             <div>
-               <label htmlFor="allow-file-upload" className="text-sm font-medium text-gray-900 cursor-pointer">
-                 Enable File Uploads
-               </label>
-               <p className="text-xs text-gray-600">Allow students to submit files with their assignments</p>
-             </div>
-             <div className="relative inline-flex items-center cursor-pointer">
-               <input
-                 type="checkbox"
-                 id="allow-file-upload"
-                 name="allowFileUpload"
-                 checked={formData.allowFileUpload}
-                 onChange={handleInputChange}
-                 className="sr-only peer"
-               />
-               <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-             </div>
-           </div>
-           
-           {formData.allowFileUpload && (
-             <>
-               <fieldset>
-                 <legend className="block text-sm font-medium text-gray-700 mb-3">
-                   Allowed File Types *
-                 </legend>
-                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                   {fileTypeOptions.map(option => (
-                     <label
-                       key={option.value}
-                       className={`flex items-center p-3 border rounded-lg cursor-pointer transition-colors ${
-                         formData.allowedFileTypes.includes(option.value)
-                           ? 'border-blue-500 bg-blue-50'
-                           : 'border-gray-200 hover:border-gray-300'
-                       }`}
-                     >
-                       <input
-                         type="checkbox"
-                         name="allowedFileTypes"
-                         value={option.value}
-                         checked={formData.allowedFileTypes.includes(option.value)}
-                         onChange={handleInputChange}
-                         className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                       />
-                       <span className="ml-2 mr-1" aria-hidden="true">{option.icon}</span>
-                       <span className="text-xs font-medium">
-                         {option.label}
-                       </span>
-                     </label>
-                   ))}
-                 </div>
-                 {validationErrors.allowedFileTypes && (
-                   <p className="mt-1 text-sm text-red-600" role="alert">
-                     {validationErrors.allowedFileTypes}
-                   </p>
-                 )}
-               </fieldset>
-               
-               <div>
-                 <label htmlFor="max-file-size" className="block text-sm font-medium text-gray-700 mb-2">
-                   Maximum File Size
-                 </label>
-                 <select
-                   id="max-file-size"
-                   name="maxFileSize"
-                   value={formData.maxFileSize}
-                   onChange={handleInputChange}
-                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                 >
-                   <option value={1048576}>1 MB</option>
-                   <option value={5242880}>5 MB</option>
-                   <option value={10485760}>10 MB</option>
-                   <option value={20971520}>20 MB</option>
-                   <option value={52428800}>50 MB</option>
-                   <option value={104857600}>100 MB</option>
-                 </select>
-                 <p className="mt-1 text-xs text-gray-500">
-                   Current limit: {formatFileSize(formData.maxFileSize)}
-                 </p>
-               </div>
-             </>
-           )}
-         </div>
-       </div>
-     </div>
-   ), [formData.allowFileUpload, formData.allowedFileTypes, formData.maxFileSize, fileTypeOptions, validationErrors.allowedFileTypes, handleInputChange, formatFileSize]);
-
-   // ✅ OPTIMIZED Advanced Settings Section
-   const AdvancedSettingsSection = useMemo(() => (
-     <div className="space-y-6">
-       <button
-         type="button"
-         onClick={() => setUiState(prev => ({ ...prev, showAdvanced: !prev.showAdvanced }))}
-         className="flex items-center justify-between w-full text-left focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-lg p-2"
-         aria-expanded={uiState.showAdvanced}
-       >
-         <h2 className="text-lg font-medium text-gray-900 flex items-center">
-           <Settings className="w-5 h-5 mr-2 text-gray-600" aria-hidden="true" />
-           Advanced Settings
-         </h2>
-         <div className={`transform transition-transform ${uiState.showAdvanced ? 'rotate-180' : ''}`}>
-           <svg className="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-           </svg>
-         </div>
-       </button>
-       
-       {uiState.showAdvanced && (
-         <div className="space-y-6 pl-7">
-           <div>
-             <label htmlFor="task-instructions" className="block text-sm font-medium text-gray-700 mb-2">
-               Detailed Instructions
-             </label>
-             <textarea
-               id="task-instructions"
-               name="instructions"
-               value={formData.instructions}
-               onChange={handleInputChange}
-               rows={3}
-               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
-               placeholder="Provide step-by-step instructions for students..."
-             />
-           </div>
-           
-           <div>
-             <label htmlFor="task-rubric" className="block text-sm font-medium text-gray-700 mb-2">
-               Grading Rubric
-             </label>
-             <textarea
-               id="task-rubric"
-               name="rubric"
-               value={formData.rubric}
-               onChange={handleInputChange}
-               rows={3}
-               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
-               placeholder="Define grading criteria and point distribution..."
-             />
-           </div>
-           
-           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-             <div>
-               <label htmlFor="max-attempts" className="block text-sm font-medium text-gray-700 mb-2">
-                 Maximum Attempts
-               </label>
-               <input
-                 type="number"
-                 id="max-attempts"
-                 name="maxAttempts"
-                 value={formData.maxAttempts}
-                 onChange={handleInputChange}
-                 min="1"
-                 max="10"
-                 className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                   validationErrors.maxAttempts ? 'border-red-300' : 'border-gray-300'
-                 }`}
-               />
-               {validationErrors.maxAttempts && (
-                 <p className="mt-1 text-sm text-red-600" role="alert">
-                   {validationErrors.maxAttempts}
-                 </p>
-               )}
-             </div>
-             
-             <div className="flex items-center">
-               <input
-                 type="checkbox"
-                 id="allow-late-submissions"
-                 name="allowLateSubmissions"
-                 checked={formData.allowLateSubmissions}
-                 onChange={handleInputChange}
-                 className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-               />
-               <label htmlFor="allow-late-submissions" className="ml-2 text-sm text-gray-700 cursor-pointer">
-                 Allow late submissions
-               </label>
-             </div>
-           </div>
-           
-           <fieldset>
-             <legend className="text-sm font-medium text-gray-700 mb-3">Notification Settings</legend>
-             <div className="space-y-3">
-               <div className="flex items-center">
-                 <input
-                   type="checkbox"
-                   id="publish-immediately"
-                   name="publishImmediately"
-                   checked={formData.publishImmediately}
-                   onChange={handleInputChange}
-                   className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                 />
-                 <label htmlFor="publish-immediately" className="ml-2 text-sm text-gray-700 cursor-pointer">
-                   Publish task immediately
-                 </label>
-               </div>
-               
-               <div className="flex items-center">
-                 <input
-                   type="checkbox"
-                   id="notify-students"
-                   name="notifyStudents"
-                   checked={formData.notifyStudents}
-                   onChange={handleInputChange}
-                   className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                 />
-                 <label htmlFor="notify-students" className="ml-2 text-sm text-gray-700 cursor-pointer">
-                   Send notifications to students
-                 </label>
-               </div>
-               
-               <div className="flex items-center">
-                 <input
-                   type="checkbox"
-                   id="auto-grade"
-                   name="autoGrade"
-                   checked={formData.autoGrade}
-                   onChange={handleInputChange}
-                   className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                 />
-                 <label htmlFor="auto-grade" className="ml-2 text-sm text-gray-700 cursor-pointer">
-                   Enable auto-grading (when available)
-                 </label>
-               </div>
-             </div>
-           </fieldset>
-         </div>
-       )}
-     </div>
-   ), [uiState.showAdvanced, formData.instructions, formData.rubric, formData.maxAttempts, formData.allowLateSubmissions, formData.publishImmediately, formData.notifyStudents, formData.autoGrade, validationErrors.maxAttempts, handleInputChange]);
-
-   // ✅ OPTIMIZED Submit Section
-   const SubmitSection = useMemo(() => {
-     // ✅ FIXED: Proper null checks for team validation
-     const availableTeams = Array.isArray(uiState.teams) ? uiState.teams : [];
-     const selectedTeamIds = Array.isArray(formData.team) ? formData.team : [];
-     
-     const hasValidTeams = formData.assignToAll 
-       ? availableTeams.length > 0 
-       : selectedTeamIds.length > 0;
-       
-     const canSubmit = availableTeams.length > 0 && hasValidTeams && uiState.networkStatus !== 'offline';
-     
-     return (
-       <div className="flex items-center justify-between pt-6 border-t border-gray-200">
-         <div className="text-sm text-gray-600">
-           {availableTeams.length > 0 ? (
-             formData.assignToAll 
-              ? `Ready to assign to all ${availableTeams.length} teams`
-               : `Selected ${selectedTeamIds.length} teams`
-           ) : (
-             <span className="text-red-600" role="alert">⚠️ No teams available - cannot create task</span>
-           )}
-         </div>
-         
-         <div className="flex items-center space-x-3">
-           <button
-             type="button"
-             onClick={onClose}
-             disabled={uiState.loading}
-             className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
-           >
-             Cancel
-           </button>
-           
-           <button
-             type="submit"
-             disabled={uiState.loading || !canSubmit}
-             className="flex items-center space-x-2 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-           >
-             {uiState.loading ? (
-               <>
-                 <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
-                 <span>Creating Task...</span>
-               </>
-             ) : (
-               <>
-                 <Send className="w-4 h-4" aria-hidden="true" />
-                 <span>Create Task</span>
-               </>
-             )}
-           </button>
-         </div>
-       </div>
-     );
-   }, [uiState.teams, uiState.loading, uiState.networkStatus, formData.assignToAll, formData.team, onClose]);
-
-   // ✅ Main Render
-   return (
-     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" role="dialog" aria-modal="true">
-       <div className="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-         {TaskHeader}
-         
-         <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0" noValidate>
-           <div className="flex-1 overflow-y-auto p-6 space-y-8" style={{ maxHeight: 'calc(90vh - 200px)' }}>
-             {uiState.errors.submit && (
-               <div className="p-4 bg-red-50 border border-red-200 rounded-lg" role="alert">
-                 <div className="flex items-start space-x-2">
-                   <AlertCircle className="w-5 h-5 text-red-500 mt-0.5" aria-hidden="true" />
-                   <div>
-                     <p className="text-sm text-red-800 font-medium">Task Creation Failed</p>
-                     <p className="text-sm text-red-700 mt-1">{uiState.errors.submit}</p>
-                   </div>
-                 </div>
-               </div>
-             )}
-             
-             {BasicInfoSection}
-             {TeamAssignmentSection}
-             {FileUploadSection}
-             {AdvancedSettingsSection}
-           </div>
-           
-           <div className="border-t border-gray-200 p-6 bg-gray-50 flex-shrink-0">
-             {SubmitSection}
-           </div>
-         </form>
-       </div>
-     </div>
-   );
- };
-
- export default React.memo(TaskCreator);
+module.exports = router;

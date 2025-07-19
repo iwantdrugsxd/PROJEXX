@@ -5,7 +5,7 @@ const Student = require("../models/studentSchema");
 const StudentTeam = require("../models/studentTeamSchema");
 const Task = require("../models/taskSchema");
 const verifyToken = require("../middleware/verifyToken");
-
+const mongoose = require('mongoose');
 console.log("🔧 projectServerRoutes.js loaded");
 
 // ✅ Create project server (Faculty only) - FIXED CODE GENERATION
