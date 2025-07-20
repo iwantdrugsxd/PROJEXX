@@ -1,4 +1,4 @@
-// frontend/src/components/TaskManagement/TaskSubmission.jsx - COMPLETE REWRITE
+// frontend/src/components/TaskManagement/TaskSubmission.jsx
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Upload,
@@ -26,7 +26,10 @@ import {
   Award,
   Info,
   RefreshCw,
-  Save
+  Save,
+  FileX,
+  Shield,
+  Zap
 } from 'lucide-react';
 
 const TaskSubmission = ({ task, onClose, onSubmitted }) => {
@@ -34,6 +37,7 @@ const TaskSubmission = ({ task, onClose, onSubmitted }) => {
   const mountedRef = useRef(true);
   const fileInputRef = useRef(null);
   const dragCounterRef = useRef(0);
+  const retryTimeoutRef = useRef(null);
   
   // ✅ State Management
   const [submissionData, setSubmissionData] = useState({
@@ -47,7 +51,8 @@ const TaskSubmission = ({ task, onClose, onSubmitted }) => {
     uploading: false,
     dragActive: false,
     showCollaborators: false,
-    showPreview: null
+    showPreview: null,
+    retryCount: 0
   });
   
   const [validation, setValidation] = useState({
@@ -63,36 +68,36 @@ const TaskSubmission = ({ task, onClose, onSubmitted }) => {
   const API_BASE = process.env.REACT_APP_API_BASE_URL || 'http://localhost:5000/api';
   const MAX_FILE_SIZE = task?.maxFileSize || 50 * 1024 * 1024; // 50MB default
   const MAX_FILES = 10;
-  const ALLOWED_TYPES = task?.allowedFileTypes || ['pdf', 'doc', 'docx', 'txt', 'jpg', 'png'];
+  const ALLOWED_TYPES = task?.allowedFileTypes || ['pdf', 'doc', 'docx', 'txt', 'jpg', 'png', 'gif'];
+  const MAX_RETRY_ATTEMPTS = 3;
   
   // ✅ File type configuration
   const fileTypeConfig = {
-    'pdf': { icon: FileText, color: 'text-red-600 bg-red-100', label: 'PDF Document' },
-    'doc': { icon: FileText, color: 'text-blue-600 bg-blue-100', label: 'Word Document' },
-    'docx': { icon: FileText, color: 'text-blue-600 bg-blue-100', label: 'Word Document' },
-    'txt': { icon: FileText, color: 'text-gray-600 bg-gray-100', label: 'Text File' },
-    'jpg': { icon: Image, color: 'text-green-600 bg-green-100', label: 'JPEG Image' },
-    'jpeg': { icon: Image, color: 'text-green-600 bg-green-100', label: 'JPEG Image' },
-    'png': { icon: Image, color: 'text-green-600 bg-green-100', label: 'PNG Image' },
-    'gif': { icon: Image, color: 'text-green-600 bg-green-100', label: 'GIF Image' },
-    'mp4': { icon: Video, color: 'text-purple-600 bg-purple-100', label: 'Video File' },
-    'mp3': { icon: Music, color: 'text-orange-600 bg-orange-100', label: 'Audio File' },
-    'zip': { icon: Archive, color: 'text-yellow-600 bg-yellow-100', label: 'ZIP Archive' },
-    'rar': { icon: Archive, color: 'text-yellow-600 bg-yellow-100', label: 'RAR Archive' },
-    'py': { icon: File, color: 'text-green-600 bg-green-100', label: 'Python File' },
-    'js': { icon: File, color: 'text-yellow-600 bg-yellow-100', label: 'JavaScript File' },
-    'html': { icon: File, color: 'text-orange-600 bg-orange-100', label: 'HTML File' },
-    'css': { icon: File, color: 'text-blue-600 bg-blue-100', label: 'CSS File' },
-    'json': { icon: File, color: 'text-gray-600 bg-gray-100', label: 'JSON File' }
+    pdf: { icon: FileText, color: 'bg-red-100 text-red-600' },
+    doc: { icon: FileText, color: 'bg-blue-100 text-blue-600' },
+    docx: { icon: FileText, color: 'bg-blue-100 text-blue-600' },
+    txt: { icon: FileText, color: 'bg-gray-100 text-gray-600' },
+    jpg: { icon: Image, color: 'bg-green-100 text-green-600' },
+    jpeg: { icon: Image, color: 'bg-green-100 text-green-600' },
+    png: { icon: Image, color: 'bg-green-100 text-green-600' },
+    gif: { icon: Image, color: 'bg-green-100 text-green-600' },
+    mp4: { icon: Video, color: 'bg-purple-100 text-purple-600' },
+    mp3: { icon: Music, color: 'bg-orange-100 text-orange-600' },
+    zip: { icon: Archive, color: 'bg-yellow-100 text-yellow-600' },
+    rar: { icon: Archive, color: 'bg-yellow-100 text-yellow-600' },
+    default: { icon: File, color: 'bg-gray-100 text-gray-600' }
   };
 
-  // ✅ Initialize component
+  // ✅ Component lifecycle
   useEffect(() => {
     mountedRef.current = true;
     checkExistingSubmission();
     
     return () => {
       mountedRef.current = false;
+      if (retryTimeoutRef.current) {
+        clearTimeout(retryTimeoutRef.current);
+      }
     };
   }, [task]);
 
@@ -102,20 +107,22 @@ const TaskSubmission = ({ task, onClose, onSubmitted }) => {
     
     try {
       const response = await fetch(`${API_BASE}/tasks/${task._id}`, {
-        credentials: 'include'
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json'
+        }
       });
       
       if (response.ok) {
         const data = await response.json();
         if (data.success && data.task.submissions) {
+          const userId = localStorage.getItem('userId') || sessionStorage.getItem('userId');
           const userSubmission = data.task.submissions.find(sub => 
-            sub.student === localStorage.getItem('userId') || 
-            sub.student === sessionStorage.getItem('userId')
+            sub.student === userId || sub.student._id === userId
           );
           
           if (userSubmission && mountedRef.current) {
             setExistingSubmission(userSubmission);
-            // Populate form with existing data for resubmission
             setSubmissionData(prev => ({
               ...prev,
               comment: userSubmission.comment || '',
@@ -129,9 +136,10 @@ const TaskSubmission = ({ task, onClose, onSubmitted }) => {
     }
   };
 
-  // ✅ File validation
+  // ✅ File validation with comprehensive checks
   const validateFile = useCallback((file) => {
     const errors = [];
+    const warnings = [];
     
     // Size validation
     if (file.size > MAX_FILE_SIZE) {
@@ -139,44 +147,59 @@ const TaskSubmission = ({ task, onClose, onSubmitted }) => {
     }
     
     // Type validation
-    const extension = file.name.split('.').pop().toLowerCase();
-    if (ALLOWED_TYPES.length > 0 && !ALLOWED_TYPES.includes(extension)) {
+    const extension = file.name.split('.').pop()?.toLowerCase();
+    if (!extension) {
+      errors.push('File has no extension');
+    } else if (ALLOWED_TYPES.length > 0 && !ALLOWED_TYPES.includes(extension)) {
       errors.push(`File type .${extension} is not allowed`);
     }
     
     // Name validation
     if (file.name.length > 255) {
-      errors.push('File name is too long');
+      errors.push('File name is too long (max 255 characters)');
+    }
+    
+    // Special character validation
+    const invalidChars = /[<>:"/\\|?*\x00-\x1f]/;
+    if (invalidChars.test(file.name)) {
+      errors.push('File name contains invalid characters');
     }
     
     // Check for duplicates
     const isDuplicate = submissionData.files.some(f => 
-      f.name === file.name && f.size === file.size
+      f.name === file.name && Math.abs(f.size - file.size) < 1000
     );
     if (isDuplicate) {
-      errors.push('File already added');
+      errors.push('Similar file already added');
     }
     
-    return errors;
+    // Size warnings
+    if (file.size > 20 * 1024 * 1024) { // 20MB
+      warnings.push('Large file - upload may take longer');
+    }
+    
+    return { errors, warnings };
   }, [submissionData.files, MAX_FILE_SIZE, ALLOWED_TYPES]);
 
-  // ✅ File handling
+  // ✅ Enhanced file handling with progress tracking
   const handleFiles = useCallback(async (fileList) => {
     const newFiles = [];
-    const errors = [];
+    const allErrors = [];
     
     // Validate total file count
     if (submissionData.files.length + fileList.length > MAX_FILES) {
-      errors.push(`Maximum ${MAX_FILES} files allowed`);
-      setValidation(prev => ({ ...prev, errors: { files: errors } }));
+      setValidation(prev => ({
+        ...prev,
+        errors: { ...prev.errors, files: `Maximum ${MAX_FILES} files allowed` }
+      }));
       return;
     }
     
     // Process each file
     for (const file of fileList) {
-      const fileErrors = validateFile(file);
+      const { errors, warnings } = validateFile(file);
       
-      if (fileErrors.length === 0) {
+      if (errors.length === 0) {
         const fileId = Date.now() + Math.random().toString(36).substr(2, 9);
         const fileObj = {
           id: fileId,
@@ -184,33 +207,33 @@ const TaskSubmission = ({ task, onClose, onSubmitted }) => {
           name: file.name,
           size: file.size,
           type: file.type,
-          extension: file.name.split('.').pop().toLowerCase(),
+          extension: file.name.split('.').pop()?.toLowerCase() || '',
           status: 'pending',
           progress: 0,
-          preview: null
+          warnings: warnings,
+          uploadedAt: null,
+          retryCount: 0
         };
         
-        // Generate preview for images
-        if (file.type.startsWith('image/')) {
-          try {
-            const preview = await generateImagePreview(file);
-            fileObj.preview = preview;
-          } catch (error) {
-            console.warn('Failed to generate preview for', file.name);
-          }
-        }
-        
         newFiles.push(fileObj);
+        setUploadProgress(prev => ({ ...prev, [fileId]: 0 }));
       } else {
-        errors.push(`${file.name}: ${fileErrors.join(', ')}`);
+        allErrors.push(`${file.name}: ${errors.join(', ')}`);
       }
     }
     
-    if (errors.length > 0) {
-      setValidation(prev => ({ 
-        ...prev, 
-        errors: { files: errors } 
+    // Update state
+    if (allErrors.length > 0) {
+      setValidation(prev => ({
+        ...prev,
+        errors: { ...prev.errors, files: allErrors.join('\n') }
       }));
+    } else {
+      setValidation(prev => {
+        const newErrors = { ...prev.errors };
+        delete newErrors.files;
+        return { ...prev, errors: newErrors };
+      });
     }
     
     if (newFiles.length > 0) {
@@ -218,24 +241,8 @@ const TaskSubmission = ({ task, onClose, onSubmitted }) => {
         ...prev,
         files: [...prev.files, ...newFiles]
       }));
-      
-      // Clear previous file errors
-      setValidation(prev => ({ 
-        ...prev, 
-        errors: { ...prev.errors, files: null } 
-      }));
     }
   }, [submissionData.files, validateFile]);
-
-  // ✅ Generate image preview
-  const generateImagePreview = (file) => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result);
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
-  };
 
   // ✅ Drag and drop handlers
   const handleDragEnter = useCallback((e) => {
@@ -271,24 +278,20 @@ const TaskSubmission = ({ task, onClose, onSubmitted }) => {
     }
   }, [handleFiles]);
 
-  // ✅ File input handler
   const handleFileInputChange = useCallback((e) => {
-    const files = Array.from(e.target.files);
+    const files = Array.from(e.target.files || []);
     if (files.length > 0) {
       handleFiles(files);
     }
-    // Reset input
-    e.target.value = '';
+    e.target.value = ''; // Clear input
   }, [handleFiles]);
 
-  // ✅ Remove file
+  // ✅ File removal
   const removeFile = useCallback((fileId) => {
     setSubmissionData(prev => ({
       ...prev,
       files: prev.files.filter(f => f.id !== fileId)
     }));
-    
-    // Remove from upload progress
     setUploadProgress(prev => {
       const newProgress = { ...prev };
       delete newProgress[fileId];
@@ -299,11 +302,10 @@ const TaskSubmission = ({ task, onClose, onSubmitted }) => {
   // ✅ Collaborator management
   const addCollaborator = useCallback(() => {
     const email = collaboratorInput.trim().toLowerCase();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     
     if (!email) return;
     
-    // Validate email format
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
       setValidation(prev => ({
         ...prev,
@@ -312,7 +314,6 @@ const TaskSubmission = ({ task, onClose, onSubmitted }) => {
       return;
     }
     
-    // Check for duplicates
     if (submissionData.collaborators.includes(email)) {
       setValidation(prev => ({
         ...prev,
@@ -325,12 +326,12 @@ const TaskSubmission = ({ task, onClose, onSubmitted }) => {
       ...prev,
       collaborators: [...prev.collaborators, email]
     }));
-    
     setCollaboratorInput('');
-    setValidation(prev => ({
-      ...prev,
-      errors: { ...prev.errors, collaborator: null }
-    }));
+    setValidation(prev => {
+      const newErrors = { ...prev.errors };
+      delete newErrors.collaborator;
+      return { ...prev, errors: newErrors };
+    });
   }, [collaboratorInput, submissionData.collaborators]);
 
   const removeCollaborator = useCallback((email) => {
@@ -341,98 +342,196 @@ const TaskSubmission = ({ task, onClose, onSubmitted }) => {
   }, []);
 
   // ✅ Form validation
-  const validateSubmission = useCallback(() => {
+  const validateForm = useCallback(() => {
     const errors = {};
-    const warnings = [];
     
     // Comment validation
     if (!submissionData.comment.trim()) {
-      warnings.push('Consider adding a comment to explain your submission');
-    } else if (submissionData.comment.length > 1000) {
-      errors.comment = 'Comment must be less than 1000 characters';
+      errors.comment = 'Submission comment is required';
+    } else if (submissionData.comment.trim().length < 10) {
+      errors.comment = 'Comment must be at least 10 characters';
     }
     
     // File validation
     if (task?.allowFileUpload && submissionData.files.length === 0) {
-      warnings.push('No files attached. Make sure this is intentional.');
+      errors.files = 'At least one file is required';
     }
     
-    // Check for pending uploads
-    const pendingFiles = submissionData.files.filter(f => f.status === 'pending');
-    if (pendingFiles.length > 0) {
+    // Check if any files are still uploading
+    const uploadingFiles = submissionData.files.filter(f => f.status === 'uploading' || f.status === 'pending');
+    if (uploadingFiles.length > 0) {
       errors.files = 'Please wait for all files to finish uploading';
     }
     
-    // Due date warning
-    if (task?.dueDate) {
-      const dueDate = new Date(task.dueDate);
-      const now = new Date();
-      const hoursDiff = (dueDate - now) / (1000 * 60 * 60);
-      
-      if (hoursDiff < 0) {
-        warnings.push('This submission is past the due date');
-      } else if (hoursDiff < 24) {
-        warnings.push('Less than 24 hours remaining until due date');
-      }
-    }
-    
-    return { errors, warnings };
+    setValidation(prev => ({ ...prev, errors }));
+    return Object.keys(errors).length === 0;
   }, [submissionData, task]);
 
-  // ✅ Submit handler
+  // ✅ Individual file upload with retry mechanism
+  const uploadSingleFile = useCallback(async (fileObj) => {
+    const formData = new FormData();
+    formData.append('files', fileObj.file);
+    formData.append('taskId', task._id);
+    
+    try {
+      setSubmissionData(prev => ({
+        ...prev,
+        files: prev.files.map(f => 
+          f.id === fileObj.id ? { ...f, status: 'uploading' } : f
+        )
+      }));
+
+      const xhr = new XMLHttpRequest();
+      
+      // Progress tracking
+      xhr.upload.addEventListener('progress', (e) => {
+        if (e.lengthComputable) {
+          const percentComplete = Math.round((e.loaded / e.total) * 100);
+          setUploadProgress(prev => ({ ...prev, [fileObj.id]: percentComplete }));
+        }
+      });
+
+      // Promise wrapper for XMLHttpRequest
+      const uploadPromise = new Promise((resolve, reject) => {
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              const response = JSON.parse(xhr.responseText);
+              resolve(response);
+            } catch (e) {
+              reject(new Error('Invalid response format'));
+            }
+          } else {
+            reject(new Error(`Upload failed with status ${xhr.status}`));
+          }
+        };
+        
+        xhr.onerror = () => reject(new Error('Network error during upload'));
+        xhr.ontimeout = () => reject(new Error('Upload timeout'));
+        
+        xhr.open('POST', `${API_BASE}/files/upload-single`, true);
+        xhr.withCredentials = true;
+        xhr.timeout = 5 * 60 * 1000; // 5 minutes
+        xhr.send(formData);
+      });
+
+      const result = await uploadPromise;
+      
+      // Update file status on success
+      setSubmissionData(prev => ({
+        ...prev,
+        files: prev.files.map(f => 
+          f.id === fileObj.id ? { 
+            ...f, 
+            status: 'completed',
+            uploadedAt: new Date().toISOString(),
+            serverResponse: result
+          } : f
+        )
+      }));
+      
+      return result;
+      
+    } catch (error) {
+      console.error(`❌ Upload failed for ${fileObj.name}:`, error);
+      
+      // Handle retry logic
+      const newRetryCount = fileObj.retryCount + 1;
+      
+      if (newRetryCount < MAX_RETRY_ATTEMPTS) {
+        // Schedule retry
+        setSubmissionData(prev => ({
+          ...prev,
+          files: prev.files.map(f => 
+            f.id === fileObj.id ? { 
+              ...f, 
+              status: 'retrying',
+              retryCount: newRetryCount,
+              lastError: error.message
+            } : f
+          )
+        }));
+        
+        // Exponential backoff
+        const delay = Math.pow(2, newRetryCount) * 1000;
+        retryTimeoutRef.current = setTimeout(() => {
+          uploadSingleFile({ ...fileObj, retryCount: newRetryCount });
+        }, delay);
+        
+      } else {
+        // Mark as failed after max retries
+        setSubmissionData(prev => ({
+          ...prev,
+          files: prev.files.map(f => 
+            f.id === fileObj.id ? { 
+              ...f, 
+              status: 'failed',
+              lastError: error.message
+            } : f
+          )
+        }));
+      }
+      
+      throw error;
+    }
+  }, [task, API_BASE]);
+
+  // ✅ Main submission handler
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    if (uiState.loading) return;
-    
-    const { errors, warnings } = validateSubmission();
-    
-    if (Object.keys(errors).length > 0) {
-      setValidation({ errors, warnings });
+    if (!validateForm()) {
       return;
     }
     
     setUiState(prev => ({ ...prev, loading: true }));
-    setValidation({ errors: {}, warnings });
     
     try {
-      // Upload files first
-      const uploadedFiles = await uploadFiles();
+      // Upload all pending files first
+      const pendingFiles = submissionData.files.filter(f => f.status === 'pending');
       
-      // Prepare submission data
+      if (pendingFiles.length > 0) {
+        setUiState(prev => ({ ...prev, uploading: true }));
+        
+        const uploadPromises = pendingFiles.map(file => uploadSingleFile(file));
+        await Promise.allSettled(uploadPromises);
+        
+        setUiState(prev => ({ ...prev, uploading: false }));
+      }
+      
+      // Check if all uploads succeeded
+      const failedFiles = submissionData.files.filter(f => f.status === 'failed');
+      if (failedFiles.length > 0) {
+        throw new Error(`${failedFiles.length} file(s) failed to upload. Please retry or remove them.`);
+      }
+      
+      // Submit the task
       const submissionPayload = {
         comment: submissionData.comment.trim(),
         collaborators: submissionData.collaborators,
-        files: uploadedFiles
+        files: submissionData.files
+          .filter(f => f.status === 'completed')
+          .map(f => ({
+            id: f.id,
+            name: f.name,
+            size: f.size,
+            type: f.type,
+            serverResponse: f.serverResponse
+          }))
       };
       
-      console.log('📤 Submitting task:', submissionPayload);
-      
-      // Submit to server
-      const formData = new FormData();
-      formData.append('comment', submissionPayload.comment);
-      formData.append('collaborators', JSON.stringify(submissionPayload.collaborators));
-      
-      // Add files to FormData
-      submissionData.files.forEach((fileObj, index) => {
-        formData.append('files', fileObj.file);
-      });
-      
-      const response = await fetch(`${API_BASE}/tasks/${task._id}/submit`, {
+      const response = await fetch(`${API_BASE}/files/upload/${task._id}`, {
         method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
         credentials: 'include',
-        body: formData
+        body: JSON.stringify(submissionPayload)
       });
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Submission failed: ${errorText}`);
-      }
       
       const result = await response.json();
       
       if (result.success) {
-        console.log('✅ Task submitted successfully');
         onSubmitted?.(result);
         onClose?.();
       } else {
@@ -443,31 +542,13 @@ const TaskSubmission = ({ task, onClose, onSubmitted }) => {
       console.error('❌ Submission error:', error);
       setValidation(prev => ({
         ...prev,
-        errors: { submit: error.message || 'Failed to submit task' }
+        errors: { ...prev.errors, submit: error.message }
       }));
     } finally {
       if (mountedRef.current) {
-        setUiState(prev => ({ ...prev, loading: false }));
+        setUiState(prev => ({ ...prev, loading: false, uploading: false }));
       }
     }
-  };
-
-  // ✅ Upload files
-  const uploadFiles = async () => {
-    const uploadedFiles = [];
-    
-    for (const fileObj of submissionData.files) {
-      if (fileObj.status === 'completed') {
-        uploadedFiles.push({
-          filename: fileObj.serverFilename,
-          originalName: fileObj.name,
-          size: fileObj.size,
-          mimetype: fileObj.type
-        });
-      }
-    }
-    
-    return uploadedFiles;
   };
 
   // ✅ Utility functions
@@ -480,7 +561,7 @@ const TaskSubmission = ({ task, onClose, onSubmitted }) => {
   };
 
   const getFileIcon = (extension) => {
-    const config = fileTypeConfig[extension] || fileTypeConfig['default'] || { icon: File, color: 'text-gray-600 bg-gray-100' };
+    const config = fileTypeConfig[extension] || fileTypeConfig['default'];
     return config;
   };
 
@@ -502,11 +583,9 @@ const TaskSubmission = ({ task, onClose, onSubmitted }) => {
     return `${minutes}m remaining`;
   };
 
-  // ✅ Component sections
-
-  // Header Component
+  // ✅ Render components
   const SubmissionHeader = () => (
-    <div className="flex items-center justify-between p-6 border-b border-gray-200 bg-white">
+    <div className="flex items-center justify-between p-6 border-b border-gray-200 bg-white sticky top-0 z-10">
       <div className="flex items-center space-x-4">
         <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
           <Send className="w-5 h-5 text-blue-600" />
@@ -543,7 +622,6 @@ const TaskSubmission = ({ task, onClose, onSubmitted }) => {
     </div>
   );
 
-  // Task Info Component
   const TaskInfo = () => (
     <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -577,7 +655,6 @@ const TaskSubmission = ({ task, onClose, onSubmitted }) => {
     </div>
   );
 
-  // File Upload Component
   const FileUploadArea = () => (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -627,7 +704,7 @@ const TaskSubmission = ({ task, onClose, onSubmitted }) => {
       
       {/* File List */}
       {submissionData.files.length > 0 && (
-        <div className="space-y-3">
+        <div className="space-y-3 max-h-80 overflow-y-auto">
           {submissionData.files.map((file) => {
             const { icon: Icon, color } = getFileIcon(file.extension);
             
@@ -648,6 +725,7 @@ const TaskSubmission = ({ task, onClose, onSubmitted }) => {
                     {formatFileSize(file.size)} • {file.extension.toUpperCase()}
                   </p>
                   
+                  {/* Status and Progress */}
                   {file.status === 'uploading' && (
                     <div className="mt-1">
                       <div className="w-full bg-gray-200 rounded-full h-1">
@@ -656,28 +734,63 @@ const TaskSubmission = ({ task, onClose, onSubmitted }) => {
                           style={{ width: `${uploadProgress[file.id] || 0}%` }}
                         ></div>
                       </div>
+                      <p className="text-xs text-blue-600 mt-1">
+                        Uploading... {uploadProgress[file.id] || 0}%
+                      </p>
+                    </div>
+                  )}
+                  
+                  {file.status === 'completed' && (
+                    <div className="flex items-center space-x-1 mt-1">
+                      <CheckCircle className="w-3 h-3 text-green-500" />
+                      <span className="text-xs text-green-600">Uploaded</span>
+                    </div>
+                  )}
+                  
+                  {file.status === 'failed' && (
+                    <div className="flex items-center space-x-1 mt-1">
+                      <AlertCircle className="w-3 h-3 text-red-500" />
+                      <span className="text-xs text-red-600">
+                        Failed: {file.lastError}
+                      </span>
+                    </div>
+                  )}
+                  
+                  {file.status === 'retrying' && (
+                    <div className="flex items-center space-x-1 mt-1">
+                      <Loader2 className="w-3 h-3 text-orange-500 animate-spin" />
+                      <span className="text-xs text-orange-600">
+                        Retrying... (Attempt {file.retryCount + 1})
+                      </span>
+                    </div>
+                  )}
+                  
+                  {file.warnings && file.warnings.length > 0 && (
+                    <div className="mt-1">
+                      {file.warnings.map((warning, index) => (
+                        <p key={index} className="text-xs text-yellow-600">
+                          ⚠️ {warning}
+                        </p>
+                      ))}
                     </div>
                   )}
                 </div>
                 
                 <div className="flex items-center space-x-2">
-                  {file.preview && (
+                  {file.status === 'failed' && (
                     <button
-                      type="button"
-                      onClick={() => setUiState(prev => ({ 
-                        ...prev, 
-                        showPreview: file.preview 
-                      }))}
-                      className="p-1 text-gray-400 hover:text-gray-600"
+                      onClick={() => uploadSingleFile(file)}
+                      className="p-1 text-orange-500 hover:text-orange-700 rounded"
+                      title="Retry upload"
                     >
-                      <Eye className="w-4 h-4" />
+                      <RefreshCw className="w-4 h-4" />
                     </button>
                   )}
                   
                   <button
-                    type="button"
                     onClick={() => removeFile(file.id)}
-                    className="p-1 text-gray-400 hover:text-red-600"
+                    className="p-1 text-red-500 hover:text-red-700 rounded"
+                    title="Remove file"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
@@ -687,65 +800,17 @@ const TaskSubmission = ({ task, onClose, onSubmitted }) => {
           })}
         </div>
       )}
-      
-      {validation.errors.files && (
-        <div className="text-sm text-red-600">
-          {Array.isArray(validation.errors.files) 
-            ? validation.errors.files.map((error, index) => (
-                <p key={index}>{error}</p>
-              ))
-            : validation.errors.files
-          }
-        </div>
-      )}
     </div>
   );
 
-  // Comment Section
-  const CommentSection = () => (
-    <div className="space-y-4">
-      <h3 className="text-lg font-medium text-gray-900">Submission Comments</h3>
-      
-      <div>
-        <textarea
-          value={submissionData.comment}
-          onChange={(e) => setSubmissionData(prev => ({ 
-            ...prev, 
-            comment: e.target.value 
-          }))}
-          rows={4}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
-          placeholder="Add any comments about your submission, challenges faced, or additional notes for your instructor..."
-          maxLength={1000}
-        />
-        <div className="flex items-center justify-between mt-1">
-          <p className="text-xs text-gray-500">
-            Optional but recommended for better feedback
-          </p>
-          <p className="text-xs text-gray-500">
-            {submissionData.comment.length}/1000
-          </p>
-        </div>
-      </div>
-      
-      {validation.errors.comment && (
-        <p className="text-sm text-red-600">{validation.errors.comment}</p>
-      )}
-    </div>
-  );
-
-  // Collaborators Section
-  const CollaboratorsSection = () => (
+  const CollaboratorSection = () => (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-medium text-gray-900">Collaborators</h3>
         <button
           type="button"
-          onClick={() => setUiState(prev => ({ 
-            ...prev, 
-            showCollaborators: !prev.showCollaborators 
-          }))}
-          className="text-sm text-blue-600 hover:text-blue-700"
+          onClick={() => setUiState(prev => ({ ...prev, showCollaborators: !prev.showCollaborators }))}
+          className="text-sm text-blue-600 hover:text-blue-700 font-medium"
         >
           {uiState.showCollaborators ? 'Hide' : 'Add Collaborators'}
         </button>
@@ -759,8 +824,8 @@ const TaskSubmission = ({ task, onClose, onSubmitted }) => {
               value={collaboratorInput}
               onChange={(e) => setCollaboratorInput(e.target.value)}
               onKeyPress={(e) => e.key === 'Enter' && addCollaborator()}
+              placeholder="Enter collaborator email"
               className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="Enter collaborator email..."
             />
             <button
               type="button"
@@ -774,59 +839,57 @@ const TaskSubmission = ({ task, onClose, onSubmitted }) => {
           {validation.errors.collaborator && (
             <p className="text-sm text-red-600">{validation.errors.collaborator}</p>
           )}
-          
-          {submissionData.collaborators.length > 0 && (
-            <div className="space-y-2">
-              <p className="text-sm font-medium text-gray-700">Added collaborators:</p>
-              {submissionData.collaborators.map((email, index) => (
-                <div
-                  key={index}
-                  className="flex items-center justify-between p-2 bg-gray-100 rounded-lg"
-                >
-                  <span className="text-sm text-gray-700">{email}</span>
-                  <button
-                    type="button"
-                    onClick={() => removeCollaborator(email)}
-                    className="p-1 text-gray-400 hover:text-red-600"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                </div>
-              ))}
+        </div>
+      )}
+      
+      {submissionData.collaborators.length > 0 && (
+        <div className="space-y-2">
+          {submissionData.collaborators.map((email) => (
+            <div key={email} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
+              <div className="flex items-center space-x-2">
+                <User className="w-4 h-4 text-gray-500" />
+                <span className="text-sm text-gray-700">{email}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => removeCollaborator(email)}
+                className="p-1 text-red-500 hover:text-red-700 rounded"
+              >
+                <X className="w-3 h-3" />
+              </button>
             </div>
-          )}
+          ))}
         </div>
       )}
     </div>
   );
 
-  // Existing Submission Warning
-  const ExistingSubmissionWarning = () => {
-    if (!existingSubmission) return null;
-    
-    return (
-      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
-        <div className="flex items-start space-x-2">
-          <AlertCircle className="w-5 h-5 text-yellow-600 mt-0.5" />
-          <div>
-            <h4 className="text-sm font-medium text-yellow-800">Previous Submission Found</h4>
-            <p className="text-sm text-yellow-700 mt-1">
-              You submitted this task on {new Date(existingSubmission.submittedAt).toLocaleString()}.
-              {existingSubmission.grade !== undefined && (
-                <span> Your grade: {existingSubmission.grade}/{task?.maxPoints}</span>
-              )}
-            </p>
-            <p className="text-sm text-yellow-700 mt-1">
-              This will be attempt {(existingSubmission.attempt || 0) + 1} of {task?.maxAttempts || 1}.
-            </p>
-          </div>
-        </div>
+  const CommentSection = () => (
+    <div className="space-y-4">
+      <label className="block text-lg font-medium text-gray-900">
+        Submission Comment *
+      </label>
+      <textarea
+        value={submissionData.comment}
+        onChange={(e) => setSubmissionData(prev => ({ ...prev, comment: e.target.value }))}
+        rows={4}
+        placeholder="Describe your work, approach, challenges faced, or any notes about your submission..."
+        className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none ${
+          validation.errors.comment ? 'border-red-300 bg-red-50' : 'border-gray-300'
+        }`}
+        disabled={uiState.loading}
+      />
+      {validation.errors.comment && (
+        <p className="text-sm text-red-600">{validation.errors.comment}</p>
+      )}
+      <div className="flex justify-between text-xs text-gray-500">
+        <span>Minimum 10 characters required</span>
+        <span>{submissionData.comment.length}/1000</span>
       </div>
-    );
-  };
+    </div>
+  );
 
-  // Validation Summary
-  const ValidationSummary = () => {
+  const ErrorDisplay = () => {
     const hasErrors = Object.keys(validation.errors).length > 0;
     const hasWarnings = validation.warnings.length > 0;
     
@@ -835,14 +898,16 @@ const TaskSubmission = ({ task, onClose, onSubmitted }) => {
     return (
       <div className="space-y-3">
         {hasErrors && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
             <div className="flex items-start space-x-2">
-              <AlertCircle className="w-5 h-5 text-red-600 mt-0.5" />
+              <AlertCircle className="w-5 h-5 text-red-500 mt-0.5" />
               <div>
-                <h4 className="text-sm font-medium text-red-800">Please fix these issues:</h4>
-                <ul className="text-sm text-red-700 mt-1 space-y-1">
-                  {Object.entries(validation.errors).map(([key, error]) => (
-                    <li key={key}>• {error}</li>
+                <h4 className="font-medium text-red-900 mb-2">Please fix the following errors:</h4>
+                <ul className="space-y-1">
+                  {Object.entries(validation.errors).map(([field, error]) => (
+                    <li key={field} className="text-red-800 text-sm">
+                      <strong>{field}:</strong> {error}
+                    </li>
                   ))}
                 </ul>
               </div>
@@ -851,14 +916,14 @@ const TaskSubmission = ({ task, onClose, onSubmitted }) => {
         )}
         
         {hasWarnings && (
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+          <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
             <div className="flex items-start space-x-2">
-              <Info className="w-5 h-5 text-yellow-600 mt-0.5" />
+              <Info className="w-5 h-5 text-yellow-500 mt-0.5" />
               <div>
-                <h4 className="text-sm font-medium text-yellow-800">Recommendations:</h4>
-                <ul className="text-sm text-yellow-700 mt-1 space-y-1">
+                <h4 className="font-medium text-yellow-900 mb-2">Warnings:</h4>
+                <ul className="space-y-1">
                   {validation.warnings.map((warning, index) => (
-                    <li key={index}>• {warning}</li>
+                    <li key={index} className="text-yellow-800 text-sm">{warning}</li>
                   ))}
                 </ul>
               </div>
@@ -869,37 +934,58 @@ const TaskSubmission = ({ task, onClose, onSubmitted }) => {
     );
   };
 
-  // Submit Section
-  const SubmitSection = () => {
-    const hasErrors = Object.keys(validation.errors).length > 0;
-    const canSubmit = !hasErrors && !uiState.loading;
+  const SubmissionFooter = () => {
+    const hasCompletedFiles = submissionData.files.some(f => f.status === 'completed');
+    const hasFailedFiles = submissionData.files.some(f => f.status === 'failed');
+    const hasUploadingFiles = submissionData.files.some(f => f.status === 'uploading' || f.status === 'retrying');
     
     return (
-      <div className="flex items-center justify-between pt-6 border-t border-gray-200">
-        <div className="text-sm text-gray-600">
-          {submissionData.files.length > 0 && (
-            <span>{submissionData.files.length} file(s) ready • </span>
+      <div className="flex items-center justify-between p-6 border-t border-gray-200 bg-gray-50 sticky bottom-0">
+        <div className="flex items-center space-x-4">
+          {existingSubmission && (
+            <div className="flex items-center space-x-2 text-sm text-yellow-600">
+              <Info className="w-4 h-4" />
+              <span>This will replace your previous submission</span>
+            </div>
           )}
-          {submissionData.collaborators.length > 0 && (
-            <span>{submissionData.collaborators.length} collaborator(s) • </span>
+          
+          {hasUploadingFiles && (
+            <div className="flex items-center space-x-2 text-sm text-blue-600">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              <span>Uploading files...</span>
+            </div>
           )}
-          Ready to submit
         </div>
         
         <div className="flex items-center space-x-3">
           <button
             type="button"
             onClick={onClose}
+            className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
             disabled={uiState.loading}
-            className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
           >
             Cancel
           </button>
           
+          {hasFailedFiles && (
+            <button
+              type="button"
+              onClick={() => {
+                const failedFiles = submissionData.files.filter(f => f.status === 'failed');
+                failedFiles.forEach(file => uploadSingleFile(file));
+              }}
+              className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors flex items-center space-x-2"
+              disabled={uiState.loading || hasUploadingFiles}
+            >
+              <RefreshCw className="w-4 h-4" />
+              <span>Retry Failed</span>
+            </button>
+          )}
+          
           <button
             type="submit"
-            disabled={!canSubmit}
-            className="flex items-center space-x-2 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={uiState.loading || hasUploadingFiles || Object.keys(validation.errors).length > 0}
+            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors flex items-center space-x-2"
           >
             {uiState.loading ? (
               <>
@@ -918,56 +1004,30 @@ const TaskSubmission = ({ task, onClose, onSubmitted }) => {
     );
   };
 
-  // Image Preview Modal
-  const ImagePreviewModal = () => {
-    if (!uiState.showPreview) return null;
-    
-    return (
-      <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
-        <div className="relative max-w-4xl max-h-full">
-          <button
-            onClick={() => setUiState(prev => ({ ...prev, showPreview: null }))}
-            className="absolute top-4 right-4 p-2 bg-white bg-opacity-20 hover:bg-opacity-30 rounded-lg text-white"
-          >
-            <X className="w-5 h-5" />
-          </button>
-          <img
-            src={uiState.showPreview}
-            alt="Preview"
-            className="max-w-full max-h-full object-contain rounded-lg"
-          />
-        </div>
-      </div>
-    );
-  };
-
-  // Main Render
+  // ✅ Main render
   return (
-    <>
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-40 p-4">
-        <div className="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
-          <SubmissionHeader />
-          
-          <form onSubmit={handleSubmit} className="flex flex-col h-full">
-            <div className="flex-1 overflow-y-auto p-6 space-y-6">
-              <TaskInfo />
-              <ExistingSubmissionWarning />
-              <ValidationSummary />
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+        <SubmissionHeader />
+        
+        <div className="flex-1 overflow-y-auto">
+          <div className="p-6 space-y-6">
+            <TaskInfo />
+            <ErrorDisplay />
+            
+            <form onSubmit={handleSubmit} className="space-y-6">
+              <CommentSection />
               
               {task?.allowFileUpload && <FileUploadArea />}
-              <CommentSection />
-              <CollaboratorsSection />
-            </div>
-            
-            <div className="border-t border-gray-200 p-6 bg-gray-50">
-              <SubmitSection />
-            </div>
-          </form>
+              
+              <CollaboratorSection />
+            </form>
+          </div>
         </div>
+        
+        <SubmissionFooter />
       </div>
-      
-      <ImagePreviewModal />
-    </>
+    </div>
   );
 };
 
