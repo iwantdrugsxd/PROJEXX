@@ -25,11 +25,13 @@
     "express": "^4.18.2",
     "express-rate-limit": "^8.0.1",
     "express-validator": "^7.0.1",
+    "googleapis": "^153.0.0",
     "jsonwebtoken": "^9.0.2",
     "module": "^1.2.5",
     "mongoose": "^7.5.0",
     "multer": "^1.4.5-lts.1",
     "nodemailer": "^6.9.4",
+    "sharp": "^0.34.3",
     "socket.io": "^4.8.1",
     "uuid": "^11.1.0"
   },
