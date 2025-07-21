@@ -1,6 +1,6 @@
 // backend/models/studentSchema.js - Enhanced with Authentication Methods
 const mongoose = require("mongoose");
-const bcrypt = require('bcryptjs');
+// const bcrypt = require('bcryptjs');
 
 const studentSchema = new mongoose.Schema({
   userId: {

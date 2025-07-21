@@ -1,39 +1,53 @@
+// backend/routes/teamRoutes.js - NO AUTHENTICATION VERSION
 const express = require('express');
 const router = express.Router();
-const StudentTeam = require('../models/studentTeamSchema'); // ✅ FIXED: Correct import path
-const Student = require('../models/studentSchema'); // ✅ FIXED: Correct import path
-const ProjectServer = require('../models/projectServerSchema'); // ✅ FIXED: Correct import path
-const verifyToken = require('../middleware/verifyToken');
+const StudentTeam = require('../models/studentTeamSchema');
+const Student = require('../models/studentSchema');
+const ProjectServer = require('../models/projectServerSchema');
+
+// ✅ NO verifyToken middleware - direct access
 
 // Utility function for consistent logging
 const logWithTimestamp = (level, message, data = {}) => {
   const timestamp = new Date().toISOString();
-  console.log(`[${timestamp}] [${level.toUpperCase()}] ${message}`, data);
+  console.log(`[${timestamp}] [TEAMS] [${level.toUpperCase()}] ${message}`, data);
 };
 
-// ✅ CREATE TEAM
-router.post('/createTeam', verifyToken, async (req, res) => {
+// ✅ HEALTH CHECK ENDPOINT
+router.get('/health', (req, res) => {
+  res.json({
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+    route: 'teams',
+    authentication: 'disabled'
+  });
+});
+
+// ✅ CREATE TEAM - Modified to accept userId in body
+router.post('/createTeam', async (req, res) => {
   try {
+    const { name, description, projectServer, maxMembers, userId, userRole } = req.body;
+    
     logWithTimestamp('info', 'Team creation attempt', {
-      userId: req.user.id,
-      userRole: req.user.role,
+      userId: userId,
+      userRole: userRole,
       body: req.body
     });
 
-    if (req.user.role !== 'student') {
+    // Basic validation - accept any userRole or default to student
+    const role = userRole || 'student';
+    if (role !== 'student') {
       return res.status(403).json({
         success: false,
         message: 'Only students can create teams'
       });
     }
 
-    const { name, description, projectServer, maxMembers } = req.body;
-
     // Validate required fields
-    if (!name || !projectServer) {
+    if (!name || !projectServer || !userId) {
       return res.status(400).json({
         success: false,
-        message: 'Team name and project server code are required'
+        message: 'Team name, project server code, and userId are required'
       });
     }
 
@@ -49,13 +63,13 @@ router.post('/createTeam', verifyToken, async (req, res) => {
     // Check if student is already in a team for this server
     const existingTeam = await StudentTeam.findOne({
       projectServer: projectServer.toUpperCase(),
-      members: req.user.id
+      members: userId
     });
 
     if (existingTeam) {
       return res.status(400).json({
         success: false,
-        message: 'You are already in a team for this project server',
+        message: 'User is already in a team for this project server',
         existingTeam: {
           name: existingTeam.name,
           id: existingTeam._id
@@ -81,8 +95,8 @@ router.post('/createTeam', verifyToken, async (req, res) => {
       name: name.trim(),
       description: description?.trim() || '',
       projectServer: projectServer.toUpperCase(),
-      creator: req.user.id,
-      members: [req.user.id],
+      creator: userId,
+      members: [userId],
       maxMembers: maxMembers || 4,
       status: 'active'
     });
@@ -97,7 +111,7 @@ router.post('/createTeam', verifyToken, async (req, res) => {
     logWithTimestamp('info', 'Team created successfully', {
       teamId: newTeam._id,
       teamName: newTeam.name,
-      creatorId: req.user.id,
+      creatorId: userId,
       serverCode: projectServer.toUpperCase()
     });
 
@@ -110,7 +124,7 @@ router.post('/createTeam', verifyToken, async (req, res) => {
   } catch (error) {
     logWithTimestamp('error', 'Team creation failed', {
       error: error.message,
-      userId: req.user.id
+      userId: req.body.userId
     });
 
     res.status(500).json({
@@ -121,15 +135,13 @@ router.post('/createTeam', verifyToken, async (req, res) => {
   }
 });
 
-// ✅ GET TEAMS BY SERVER ID (NEW ENDPOINT)
-router.get('/server/:serverId/teams', verifyToken, async (req, res) => {
+// ✅ GET TEAMS BY SERVER ID
+router.get('/server/:serverId/teams', async (req, res) => {
   try {
     const { serverId } = req.params;
     
     logWithTimestamp('info', 'Fetching teams by server ID', {
-      serverId,
-      userId: req.user.id,
-      userRole: req.user.role
+      serverId
     });
     
     // Get server details
@@ -138,14 +150,6 @@ router.get('/server/:serverId/teams', verifyToken, async (req, res) => {
       return res.status(404).json({
         success: false,
         message: 'Server not found'
-      });
-    }
-
-    // Check access
-    if (req.user.role === 'faculty' && server.faculty.toString() !== req.user.id) {
-      return res.status(403).json({
-        success: false,
-        message: 'Access denied'
       });
     }
 
@@ -177,27 +181,30 @@ router.get('/server/:serverId/teams', verifyToken, async (req, res) => {
     
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch teams for server'
+      message: 'Failed to fetch teams for server',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
     });
   }
 });
 
-// ✅ GET STUDENT'S TEAMS
-router.get('/student-teams', verifyToken, async (req, res) => {
+// ✅ GET STUDENT'S TEAMS - Modified to accept studentId as query param
+router.get('/student-teams', async (req, res) => {
   try {
-    if (req.user.role !== 'student') {
-      return res.status(403).json({
+    const { studentId } = req.query;
+    
+    if (!studentId) {
+      return res.status(400).json({
         success: false,
-        message: 'Student access required'
+        message: 'studentId query parameter is required'
       });
     }
 
     logWithTimestamp('info', 'Fetching student teams', {
-      studentId: req.user.id
+      studentId: studentId
     });
 
     const teams = await StudentTeam.find({
-      members: req.user.id
+      members: studentId
     })
     .populate('members', 'firstName lastName email')
     .populate('creator', 'firstName lastName email')
@@ -219,19 +226,21 @@ router.get('/student-teams', verifyToken, async (req, res) => {
     );
 
     logWithTimestamp('info', 'Student teams fetched successfully', {
-      studentId: req.user.id,
+      studentId: studentId,
       teamCount: teams.length
     });
 
     res.json({
       success: true,
-      teams: teamsWithServerDetails
+      teams: teamsWithServerDetails,
+      totalTeams: teams.length,
+      message: teams.length === 0 ? 'No teams found. Join or create a team to get started.' : `Found ${teams.length} teams`
     });
 
   } catch (error) {
     logWithTimestamp('error', 'Error fetching student teams', {
       error: error.message,
-      userId: req.user.id
+      studentId: req.query.studentId
     });
 
     res.status(500).json({
@@ -242,23 +251,25 @@ router.get('/student-teams', verifyToken, async (req, res) => {
   }
 });
 
-// ✅ GET ALL TEAMS FOR FACULTY
-router.get('/faculty', verifyToken, async (req, res) => {
+// ✅ GET ALL TEAMS FOR FACULTY - Modified to accept facultyId as query param
+router.get('/faculty-teams', async (req, res) => {
   try {
-    if (req.user.role !== 'faculty') {
-      return res.status(403).json({
+    const { facultyId } = req.query;
+    
+    if (!facultyId) {
+      return res.status(400).json({
         success: false,
-        message: 'Faculty access required'
+        message: 'facultyId query parameter is required'
       });
     }
 
     logWithTimestamp('info', 'Fetching faculty teams', {
-      facultyId: req.user.id
+      facultyId: facultyId
     });
 
     // Get all servers owned by this faculty
     const facultyServers = await ProjectServer.find({
-      faculty: req.user.id
+      faculty: facultyId
     });
 
     const serverCodes = facultyServers.map(server => server.code);
@@ -285,20 +296,22 @@ router.get('/faculty', verifyToken, async (req, res) => {
     });
 
     logWithTimestamp('info', 'Faculty teams fetched successfully', {
-      facultyId: req.user.id,
+      facultyId: facultyId,
       teamCount: teams.length,
       serverCount: facultyServers.length
     });
 
     res.json({
       success: true,
-      teams: teamsWithServerDetails
+      teams: teamsWithServerDetails,
+      totalTeams: teams.length,
+      totalServers: facultyServers.length
     });
 
   } catch (error) {
     logWithTimestamp('error', 'Error fetching faculty teams', {
       error: error.message,
-      userId: req.user.id
+      facultyId: req.query.facultyId
     });
 
     res.status(500).json({
@@ -309,79 +322,21 @@ router.get('/faculty', verifyToken, async (req, res) => {
   }
 });
 
-// ✅ GET FACULTY TEAMS (ALTERNATIVE ENDPOINT)
-router.get('/faculty-teams', verifyToken, async (req, res) => {
+// ✅ JOIN TEAM - Modified to accept userId in body
+router.post('/join/:teamId', async (req, res) => {
   try {
-    if (req.user.role !== 'faculty') {
-      return res.status(403).json({
+    const { teamId } = req.params;
+    const { userId, userRole } = req.body;
+
+    if (!userId) {
+      return res.status(400).json({
         success: false,
-        message: 'Faculty access required'
+        message: 'userId is required in request body'
       });
     }
 
-    logWithTimestamp('info', 'Fetching faculty teams (alternative endpoint)', {
-      facultyId: req.user.id
-    });
-
-    // Get all servers owned by this faculty
-    const facultyServers = await ProjectServer.find({
-      faculty: req.user.id
-    });
-
-    const serverCodes = facultyServers.map(server => server.code);
-
-    // Get all teams for faculty's servers
-    const teams = await StudentTeam.find({
-      projectServer: { $in: serverCodes }
-    })
-    .populate('members', 'firstName lastName email')
-    .populate('creator', 'firstName lastName email')
-    .sort({ createdAt: -1 });
-
-    // Add server details to each team
-    const teamsWithServerDetails = teams.map(team => {
-      const server = facultyServers.find(s => s.code === team.projectServer);
-      return {
-        ...team.toObject(),
-        serverDetails: server ? {
-          id: server._id,
-          title: server.title,
-          description: server.description
-        } : null
-      };
-    });
-
-    logWithTimestamp('info', 'Faculty teams fetched successfully (alternative)', {
-      facultyId: req.user.id,
-      teamCount: teams.length,
-      serverCount: facultyServers.length
-    });
-
-    res.json({
-      success: true,
-      teams: teamsWithServerDetails
-    });
-
-  } catch (error) {
-    logWithTimestamp('error', 'Error fetching faculty teams (alternative)', {
-      error: error.message,
-      userId: req.user.id
-    });
-
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch teams',
-      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
-    });
-  }
-});
-
-// ✅ JOIN TEAM
-router.post('/join/:teamId', verifyToken, async (req, res) => {
-  try {
-    const { teamId } = req.params;
-
-    if (req.user.role !== 'student') {
+    const role = userRole || 'student';
+    if (role !== 'student') {
       return res.status(403).json({
         success: false,
         message: 'Only students can join teams'
@@ -399,10 +354,10 @@ router.post('/join/:teamId', verifyToken, async (req, res) => {
     }
 
     // Check if student is already a member
-    if (team.members.some(member => member._id.toString() === req.user.id)) {
+    if (team.members.some(member => member._id.toString() === userId)) {
       return res.status(400).json({
         success: false,
-        message: 'You are already a member of this team'
+        message: 'User is already a member of this team'
       });
     }
 
@@ -417,19 +372,19 @@ router.post('/join/:teamId', verifyToken, async (req, res) => {
     // Check if student is already in another team for this server
     const existingTeam = await StudentTeam.findOne({
       projectServer: team.projectServer,
-      members: req.user.id,
+      members: userId,
       _id: { $ne: teamId }
     });
 
     if (existingTeam) {
       return res.status(400).json({
         success: false,
-        message: 'You are already in another team for this project server'
+        message: 'User is already in another team for this project server'
       });
     }
 
     // Add student to team
-    team.members.push(req.user.id);
+    team.members.push(userId);
     await team.save();
 
     const updatedTeam = await StudentTeam.findById(teamId)
@@ -438,7 +393,7 @@ router.post('/join/:teamId', verifyToken, async (req, res) => {
 
     logWithTimestamp('info', 'Student joined team successfully', {
       teamId,
-      studentId: req.user.id,
+      studentId: userId,
       teamName: team.name
     });
 
@@ -452,7 +407,7 @@ router.post('/join/:teamId', verifyToken, async (req, res) => {
     logWithTimestamp('error', 'Error joining team', {
       error: error.message,
       teamId: req.params.teamId,
-      userId: req.user.id
+      userId: req.body.userId
     });
 
     res.status(500).json({
@@ -463,12 +418,21 @@ router.post('/join/:teamId', verifyToken, async (req, res) => {
   }
 });
 
-// ✅ LEAVE TEAM
-router.post('/leave/:teamId', verifyToken, async (req, res) => {
+// ✅ LEAVE TEAM - Modified to accept userId in body
+router.post('/leave/:teamId', async (req, res) => {
   try {
     const { teamId } = req.params;
+    const { userId, userRole } = req.body;
 
-    if (req.user.role !== 'student') {
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        message: 'userId is required in request body'
+      });
+    }
+
+    const role = userRole || 'student';
+    if (role !== 'student') {
       return res.status(403).json({
         success: false,
         message: 'Only students can leave teams'
@@ -485,15 +449,15 @@ router.post('/leave/:teamId', verifyToken, async (req, res) => {
     }
 
     // Check if student is a member
-    if (!team.members.includes(req.user.id)) {
+    if (!team.members.includes(userId)) {
       return res.status(400).json({
         success: false,
-        message: 'You are not a member of this team'
+        message: 'User is not a member of this team'
       });
     }
 
     // Remove student from team
-    team.members = team.members.filter(memberId => memberId.toString() !== req.user.id);
+    team.members = team.members.filter(memberId => memberId.toString() !== userId);
 
     // If team becomes empty, delete it
     if (team.members.length === 0) {
@@ -511,7 +475,7 @@ router.post('/leave/:teamId', verifyToken, async (req, res) => {
     }
 
     // If the leaving member was the creator, assign a new creator
-    if (team.creator.toString() === req.user.id) {
+    if (team.creator.toString() === userId) {
       team.creator = team.members[0];
     }
 
@@ -523,7 +487,7 @@ router.post('/leave/:teamId', verifyToken, async (req, res) => {
 
     logWithTimestamp('info', 'Student left team successfully', {
       teamId,
-      studentId: req.user.id,
+      studentId: userId,
       teamName: team.name,
       remainingMembers: team.members.length
     });
@@ -538,7 +502,7 @@ router.post('/leave/:teamId', verifyToken, async (req, res) => {
     logWithTimestamp('error', 'Error leaving team', {
       error: error.message,
       teamId: req.params.teamId,
-      userId: req.user.id
+      userId: req.body.userId
     });
 
     res.status(500).json({
@@ -549,10 +513,18 @@ router.post('/leave/:teamId', verifyToken, async (req, res) => {
   }
 });
 
-// ✅ DELETE TEAM
-router.delete('/:teamId', verifyToken, async (req, res) => {
+// ✅ DELETE TEAM - Modified to accept userId in body
+router.delete('/:teamId', async (req, res) => {
   try {
     const { teamId } = req.params;
+    const { userId, userRole } = req.body;
+
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        message: 'userId is required in request body'
+      });
+    }
 
     const team = await StudentTeam.findById(teamId);
 
@@ -565,14 +537,15 @@ router.delete('/:teamId', verifyToken, async (req, res) => {
 
     // Check permissions - only team creator or faculty can delete
     let canDelete = false;
+    const role = userRole || 'student';
 
-    if (req.user.role === 'student') {
-      canDelete = team.creator.toString() === req.user.id;
-    } else if (req.user.role === 'faculty') {
+    if (role === 'student') {
+      canDelete = team.creator.toString() === userId;
+    } else if (role === 'faculty') {
       // Check if faculty owns the server
       const server = await ProjectServer.findOne({
         code: team.projectServer,
-        faculty: req.user.id
+        faculty: userId
       });
       canDelete = !!server;
     }
@@ -589,8 +562,8 @@ router.delete('/:teamId', verifyToken, async (req, res) => {
     logWithTimestamp('info', 'Team deleted successfully', {
       teamId,
       teamName: team.name,
-      deletedBy: req.user.id,
-      userRole: req.user.role
+      deletedBy: userId,
+      userRole: role
     });
 
     res.json({
@@ -602,7 +575,7 @@ router.delete('/:teamId', verifyToken, async (req, res) => {
     logWithTimestamp('error', 'Error deleting team', {
       error: error.message,
       teamId: req.params.teamId,
-      userId: req.user.id
+      userId: req.body.userId
     });
 
     res.status(500).json({
@@ -614,15 +587,14 @@ router.delete('/:teamId', verifyToken, async (req, res) => {
 });
 
 // ✅ SEARCH TEAMS
-router.get('/search/:query', verifyToken, async (req, res) => {
+router.get('/search/:query', async (req, res) => {
   try {
     const { query } = req.params;
     const { serverCode } = req.query;
 
     logWithTimestamp('info', 'Searching teams', {
       query,
-      serverCode,
-      userId: req.user.id
+      serverCode
     });
 
     let searchCriteria = {
@@ -664,7 +636,7 @@ router.get('/search/:query', verifyToken, async (req, res) => {
 });
 
 // ✅ GET TEAM DETAILS
-router.get('/:teamId', verifyToken, async (req, res) => {
+router.get('/:teamId', async (req, res) => {
   try {
     const { teamId } = req.params;
 
@@ -676,26 +648,6 @@ router.get('/:teamId', verifyToken, async (req, res) => {
       return res.status(404).json({
         success: false,
         message: 'Team not found'
-      });
-    }
-
-    // Check access permissions
-    let hasAccess = false;
-
-    if (req.user.role === 'student') {
-      hasAccess = team.members.some(member => member._id.toString() === req.user.id);
-    } else if (req.user.role === 'faculty') {
-      const server = await ProjectServer.findOne({
-        code: team.projectServer,
-        faculty: req.user.id
-      });
-      hasAccess = !!server;
-    }
-
-    if (!hasAccess) {
-      return res.status(403).json({
-        success: false,
-        message: 'Access denied to this team'
       });
     }
 
@@ -730,11 +682,18 @@ router.get('/:teamId', verifyToken, async (req, res) => {
   }
 });
 
-// ✅ UPDATE TEAM
-router.put('/:teamId', verifyToken, async (req, res) => {
+// ✅ UPDATE TEAM - Modified to accept userId in body
+router.put('/:teamId', async (req, res) => {
   try {
     const { teamId } = req.params;
-    const { name, description, maxMembers } = req.body;
+    const { name, description, maxMembers, userId, userRole } = req.body;
+
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        message: 'userId is required in request body'
+      });
+    }
 
     const team = await StudentTeam.findById(teamId);
 
@@ -746,7 +705,8 @@ router.put('/:teamId', verifyToken, async (req, res) => {
     }
 
     // Check permissions - only team creator can update
-    if (req.user.role !== 'student' || team.creator.toString() !== req.user.id) {
+    const role = userRole || 'student';
+    if (role !== 'student' || team.creator.toString() !== userId) {
       return res.status(403).json({
         success: false,
         message: 'Only the team creator can update team details'
@@ -777,7 +737,7 @@ router.put('/:teamId', verifyToken, async (req, res) => {
     logWithTimestamp('info', 'Team updated successfully', {
       teamId,
       teamName: updatedTeam.name,
-      updatedBy: req.user.id
+      updatedBy: userId
     });
 
     res.json({
@@ -798,28 +758,6 @@ router.put('/:teamId', verifyToken, async (req, res) => {
       error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
     });
   }
-});
-
-// ✅ HEALTH CHECK
-router.get('/health', (req, res) => {
-  res.json({
-    success: true,
-    message: 'Team routes are working',
-    timestamp: new Date().toISOString(),
-    routes: [
-      'POST /api/teamRoutes/createTeam',
-      'GET /api/teamRoutes/student-teams',
-      'GET /api/teamRoutes/faculty',
-      'GET /api/teamRoutes/faculty-teams',
-      'GET /api/teamRoutes/server/:serverId/teams',
-      'POST /api/teamRoutes/join/:teamId',
-      'POST /api/teamRoutes/leave/:teamId',
-      'DELETE /api/teamRoutes/:teamId',
-      'GET /api/teamRoutes/search/:query',
-      'GET /api/teamRoutes/:teamId',
-      'PUT /api/teamRoutes/:teamId'
-    ]
-  });
 });
 
 module.exports = router;

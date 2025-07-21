@@ -94,71 +94,78 @@ const StudentDashboard = () => {
   };
 
   // ✅ Enhanced Server Fetching
-  const fetchServers = async () => {
-    try {
-      const response = await fetch(`${API_BASE}/projectServers/student-servers`, {
-        credentials: 'include'
-      });
-      const data = await response.json();
-      if (data.success) {
-        setServers(data.servers || []);
-        setDashboardStats(prev => ({ ...prev, totalServers: data.servers?.length || 0 }));
-        
-        // Auto-select first server if none selected
-        if (!selectedServer && data.servers?.length > 0) {
-          setSelectedServer(data.servers[0]);
-        }
-      }
-    } catch (error) {
-      console.error('❌ Failed to fetch servers:', error);
+ const fetchTeams = async () => {
+  try {
+    // Add studentId as query parameter
+    const studentId = user?.id || user?._id || 'STUDENT_ID_HERE'; // Replace with actual student ID
+    const response = await fetch(`${API_BASE}/teams/student-teams?studentId=${studentId}`, {
+      credentials: 'include'
+    });
+    const data = await response.json();
+    if (data.success) {
+      setTeams(data.teams || []);
+      setDashboardStats(prev => ({ ...prev, totalTeams: data.teams?.length || 0 }));
+    } else {
+      console.error('❌ Failed to fetch teams:', data.message);
     }
-  };
+  } catch (error) {
+    console.error('❌ Failed to fetch teams:', error);
+  }
+};
 
-  // ✅ Enhanced Team Fetching
-  const fetchTeams = async () => {
-    try {
-      const response = await fetch(`${API_BASE}/teamRoutes/student-teams`, {
-        credentials: 'include'
-      });
-      const data = await response.json();
-      if (data.success) {
-        setTeams(data.teams || []);
-        setDashboardStats(prev => ({ ...prev, totalTeams: data.teams?.length || 0 }));
+// ✅ Update fetchServers function  
+const fetchServers = async () => {
+  try {
+    const studentId = user?.id || user?._id || 'STUDENT_ID_HERE'; // Replace with actual student ID
+    const response = await fetch(`${API_BASE}/projectServers/student-servers?studentId=${studentId}`, {
+      credentials: 'include'
+    });
+    const data = await response.json();
+    if (data.success) {
+      setServers(data.servers || []);
+      setDashboardStats(prev => ({ ...prev, totalServers: data.servers?.length || 0 }));
+      
+      if (!selectedServer && data.servers?.length > 0) {
+        setSelectedServer(data.servers[0]);
       }
-    } catch (error) {
-      console.error('❌ Failed to fetch teams:', error);
+    } else {
+      console.error('❌ Failed to fetch servers:', data.message);
     }
-  };
+  } catch (error) {
+    console.error('❌ Failed to fetch servers:', error);
+  }
+};
 
-  // ✅ Enhanced Task Fetching
-  const fetchTasks = async () => {
-    try {
-      const response = await fetch(`${API_BASE}/tasks/student-tasks`, {
-        credentials: 'include'
-      });
-      const data = await response.json();
-      if (data.success) {
-        const taskList = data.tasks || [];
-        setTasks(taskList);
-        
-        // Calculate task statistics
-        const completed = taskList.filter(task => 
-          task.submissions?.some(sub => sub.student === user.id)
-        ).length;
-        const pending = taskList.length - completed;
-        
-        setDashboardStats(prev => ({
-          ...prev,
-          totalTasks: taskList.length,
-          completedTasks: completed,
-          pendingTasks: pending,
-          completionRate: taskList.length > 0 ? Math.round((completed / taskList.length) * 100) : 0
-        }));
-      }
-    } catch (error) {
-      console.error('❌ Failed to fetch tasks:', error);
+// ✅ Update fetchTasks function
+const fetchTasks = async () => {
+  try {
+    const studentId = user?.id || user?._id || 'STUDENT_ID_HERE'; // Replace with actual student ID
+    const response = await fetch(`${API_BASE}/tasks/student-tasks?studentId=${studentId}`, {
+      credentials: 'include'
+    });
+    const data = await response.json();
+    if (data.success) {
+      const taskList = data.tasks || [];
+      setTasks(taskList);
+      
+      // Calculate task statistics
+      const completed = taskList.filter(task => task.hasSubmission).length;
+      const pending = taskList.length - completed;
+      
+      setDashboardStats(prev => ({
+        ...prev,
+        totalTasks: taskList.length,
+        completedTasks: completed,
+        pendingTasks: pending,
+        completionRate: taskList.length > 0 ? Math.round((completed / taskList.length) * 100) : 0
+      }));
+    } else {
+      console.error('❌ Failed to fetch tasks:', data.message);
     }
-  };
+  } catch (error) {
+    console.error('❌ Failed to fetch tasks:', error);
+  }
+};
 
   // ✅ NEW: Analytics Integration
   const fetchAnalytics = async () => {

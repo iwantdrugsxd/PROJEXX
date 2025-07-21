@@ -1,6 +1,5 @@
-// backend/server.js - COMPLETE PRODUCTION LEVEL SERVER
-// NO ISSUES, ALL APIS WORKING, FULL FEATURE INTEGRATION
-// Enhanced with comprehensive logging, error handling, and monitoring
+// backend/server.js - NO AUTHENTICATION VERSION
+// ALL APIS WORKING WITHOUT TOKEN VERIFICATION
 
 const express = require("express");
 const mongoose = require("mongoose");
@@ -14,7 +13,7 @@ const http = require("http");
 // Load environment variables FIRST
 require('dotenv').config();
 
-console.log('🚀 [STARTUP] Starting ProjectFlow Backend Server...');
+console.log('🚀 [STARTUP] Starting ProjectFlow Backend Server (No Auth)...');
 console.log('📍 [STARTUP] Environment:', process.env.NODE_ENV || 'development');
 console.log('🔧 [STARTUP] Node Version:', process.version);
 console.log('💾 [STARTUP] Memory Usage:', process.memoryUsage());
@@ -278,14 +277,10 @@ logger.info('✅ [CORS] CORS configuration applied');
 // ==============================================
 
 if (rateLimit) {
-  // General API rate limiter
+  // General API rate limiter (more permissive without auth)
   const generalLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: (req) => {
-      // Higher limits for authenticated users
-      if (req.headers.authorization || req.cookies?.token) return 2000;
-      return 1000;
-    },
+    max: 5000, // Higher limit since no auth verification
     message: {
       success: false,
       error: 'Too many requests from this IP, please try again later.',
@@ -310,58 +305,10 @@ if (rateLimit) {
     }
   });
 
-  // Auth-specific rate limiter (stricter)
-  const authLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 15, // 15 login attempts per 15 minutes
-    message: {
-      success: false,
-      error: 'Too many authentication attempts, please try again later.',
-      retryAfter: '15 minutes'
-    },
-    standardHeaders: true,
-    legacyHeaders: false,
-    handler: (req, res) => {
-      logger.warn(`🚫 [AUTH_LIMIT] IP ${req.ip} exceeded auth rate limit on ${req.originalUrl}`);
-      res.status(429).json({
-        success: false,
-        error: 'Too many authentication attempts, please try again later.',
-        retryAfter: '15 minutes'
-      });
-    }
-  });
-
-  // File upload rate limiter
-  const uploadLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 50, // 50 uploads per 15 minutes
-    message: {
-      success: false,
-      error: 'Too many upload requests, please try again later.',
-      retryAfter: '15 minutes'
-    },
-    standardHeaders: true,
-    legacyHeaders: false,
-    handler: (req, res) => {
-      logger.warn(`🚫 [UPLOAD_LIMIT] IP ${req.ip} exceeded upload rate limit on ${req.originalUrl}`);
-      res.status(429).json({
-        success: false,
-        error: 'Too many upload requests, please try again later.',
-        retryAfter: '15 minutes'
-      });
-    }
-  });
-
-  // Apply rate limiters
-  app.use('/api/faculty/login', authLimiter);
-  app.use('/api/faculty/register', authLimiter);
-  app.use('/api/student/login', authLimiter);
-  app.use('/api/student/register', authLimiter);
-  app.use('/api/files', uploadLimiter);
-  app.use('/api/drive', uploadLimiter);
+  // Apply rate limiter
   app.use('/api', generalLimiter);
   
-  logger.info('✅ [RATE_LIMIT] Rate limiting configured');
+  logger.info('✅ [RATE_LIMIT] Rate limiting configured (permissive mode)');
 } else {
   logger.warn('⚠️  [RATE_LIMIT] express-rate-limit not available');
 }
@@ -477,10 +424,11 @@ const safeLoadRoute = (routePath, routeName, mountPath, isRequired = false) => {
       name: routeName,
       path: mountPath,
       status: 'loaded',
-      required: isRequired
+      required: isRequired,
+      authentication: 'disabled'
     });
     
-    logger.info(`✅ [ROUTES] ${routeName} loaded at ${mountPath}`);
+    logger.info(`✅ [ROUTES] ${routeName} loaded at ${mountPath} (No Auth)`);
     return true;
     
   } catch (error) {
@@ -505,15 +453,15 @@ const safeLoadRoute = (routePath, routeName, mountPath, isRequired = false) => {
 };
 
 // ==============================================
-// LOAD ALL ROUTES - COMPREHENSIVE
+// LOAD ALL ROUTES - NO AUTHENTICATION
 // ==============================================
 
 const loadAllRoutes = () => {
-  logger.info('\n🔗 [ROUTES] Starting route loading process...');
+  logger.info('\n🔗 [ROUTES] Starting route loading process (No Authentication)...');
 
-  // Core authentication routes (REQUIRED)
-  const authLoaded = safeLoadRoute('./routes/facultyRoutes', 'Faculty Auth', '/api/faculty', true);
-  const studentLoaded = safeLoadRoute('./routes/studentRoutes', 'Student Auth', '/api/student', true);
+  // Core authentication routes (OPTIONAL - for login/register only, no token verification)
+  const authLoaded = safeLoadRoute('./routes/facultyRoutes', 'Faculty Auth', '/api/faculty', false);
+  const studentLoaded = safeLoadRoute('./routes/studentRoutes', 'Student Auth', '/api/student', false);
 
   // Alternative student route mounting
   if (studentLoaded) {
@@ -526,128 +474,46 @@ const loadAllRoutes = () => {
     }
   }
 
-  // Core project management routes (REQUIRED)
-  const serverLoaded = safeLoadRoute('./routes/projectServerRoutes', 'Project Servers', '/api/servers', true);
+  // ✅ CORE ROUTES - NO AUTHENTICATION REQUIRED
+  const serverLoaded = safeLoadRoute('./routes/projectServerRoutes', 'Project Servers', '/api/projectServers', true);
   const teamLoaded = safeLoadRoute('./routes/teamRoutes', 'Teams', '/api/teams', true);
+  const taskLoaded = safeLoadRoute('./routes/taskRoutes', 'Tasks', '/api/tasks', true);
 
   // Alternative mounting for project servers
   if (serverLoaded) {
     try {
       const serverRoutes = require('./routes/projectServerRoutes');
-      app.use('/api/projectServers', serverRoutes);
-      logger.info('✅ [ROUTES] Project server routes also mounted at /api/projectServers');
+      app.use('/api/servers', serverRoutes);
+      logger.info('✅ [ROUTES] Project server routes also mounted at /api/servers');
     } catch (err) {
       logger.warn('⚠️  [ROUTES] Failed to mount alternative server route');
     }
   }
 
-  // Task management routes (CRITICAL)
-  const taskLoaded = safeLoadRoute('./routes/taskRoutes', 'Tasks', '/api/tasks', true);
-
-  // File and drive routes (OPTIONAL but important)
+  // File and drive routes (OPTIONAL)
   const fileLoaded = safeLoadRoute('./routes/fileRoutes', 'File Upload', '/api/files', false);
   const driveLoaded = safeLoadRoute('./routes/googleDriveRoutes', 'Google Drive', '/api/drive', false);
 
-  // Additional feature routes (OPTIONAL - only load if they exist)
+  // Additional feature routes (OPTIONAL)
   safeLoadRoute('./routes/notificationRoutes', 'Notifications', '/api/notifications', false);
   safeLoadRoute('./routes/analyticsRoutes', 'Analytics', '/api/analytics', false);
   safeLoadRoute('./routes/calendarRoutes', 'Calendar', '/api/calendar', false);
   safeLoadRoute('./routes/messagingRoutes', 'Messaging', '/api/messaging', false);
-  
-  // These routes don't exist yet - skip them to avoid errors
-  // safeLoadRoute('./routes/settingsRoutes', 'Settings', '/api/settings', false);
-  // safeLoadRoute('./routes/reportRoutes', 'Reports', '/api/reports', false);
-  // safeLoadRoute('./routes/exportRoutes', 'Export', '/api/export', false);
-  // safeLoadRoute('./routes/importRoutes', 'Import', '/api/import', false);
 
-  // Create fallback routes for failed critical routes
-  createFallbackRoutes(taskLoaded, fileLoaded, authLoaded, studentLoaded);
+  // ✅ Log final route summary
+  logger.info('\n📊 [ROUTES] Final Route Summary (No Authentication):');
+  logger.info('✅ Authentication (Optional):');
+  logger.info(`   Faculty: ${authLoaded ? '/api/faculty' : 'Not Available'}`);
+  logger.info(`   Student: ${studentLoaded ? '/api/student + /api/students' : 'Not Available'}`);
+  logger.info('✅ Core Features (No Auth Required):');
+  logger.info(`   Project Servers: ${serverLoaded ? '/api/projectServers + /api/servers' : 'FAILED'}`);
+  logger.info(`   Teams: ${teamLoaded ? '/api/teams' : 'FAILED'}`);
+  logger.info(`   Tasks: ${taskLoaded ? '/api/tasks' : 'FAILED'}`);
+  logger.info('✅ Optional Features:');
+  logger.info(`   File Upload: ${fileLoaded ? '/api/files' : 'Not Available'}`);
+  logger.info(`   Google Drive: ${driveLoaded ? '/api/drive' : 'Not Available'}`);
 
   return { authLoaded, studentLoaded, serverLoaded, teamLoaded, taskLoaded, fileLoaded, driveLoaded };
-};
-
-// ==============================================
-// FALLBACK ROUTES FOR FAILED SERVICES
-// ==============================================
-
-const createFallbackRoutes = (taskLoaded, fileLoaded, authLoaded, studentLoaded) => {
-  // If task routes failed, create emergency endpoints
-  if (!taskLoaded) {
-    logger.error('🚨 [ROUTES] Creating emergency task endpoints...');
-    
-    app.get('/api/tasks/health', (req, res) => {
-      res.status(503).json({
-        success: false,
-        message: 'Task service unavailable',
-        error: 'Task routes failed to load',
-        suggestion: 'Check for syntax errors, duplicate imports, or missing dependencies'
-      });
-    });
-    
-    app.get('/api/tasks/student-tasks', (req, res) => {
-      res.status(503).json({
-        success: false,
-        message: 'Task service unavailable',
-        error: 'Task routes failed to initialize',
-        fallback: true
-      });
-    });
-    
-    app.all('/api/tasks/*', (req, res) => {
-      res.status(503).json({
-        success: false,
-        message: 'Task service unavailable',
-        route: req.originalUrl,
-        error: 'Task routes failed to load'
-      });
-    });
-  }
-
-  // If file routes failed, create emergency endpoints
-  if (!fileLoaded) {
-    logger.warn('⚠️  [ROUTES] Creating emergency file endpoints...');
-    
-    app.get('/api/files/health', (req, res) => {
-      res.status(503).json({
-        success: false,
-        message: 'File upload service unavailable',
-        error: 'File routes failed to load'
-      });
-    });
-    
-    app.all('/api/files/*', (req, res) => {
-      res.status(503).json({
-        success: false,
-        message: 'File upload service unavailable',
-        route: req.originalUrl
-      });
-    });
-  }
-
-  // If auth routes failed, create emergency endpoints
-  if (!authLoaded) {
-    logger.error('🚨 [ROUTES] Creating emergency auth endpoints...');
-    
-    app.all('/api/faculty/*', (req, res) => {
-      res.status(503).json({
-        success: false,
-        message: 'Faculty authentication service unavailable',
-        error: 'Faculty routes failed to load'
-      });
-    });
-  }
-
-  if (!studentLoaded) {
-    logger.error('🚨 [ROUTES] Creating emergency student endpoints...');
-    
-    app.all('/api/student/*', (req, res) => {
-      res.status(503).json({
-        success: false,
-        message: 'Student authentication service unavailable',
-        error: 'Student routes failed to load'
-      });
-    });
-  }
 };
 
 // ==============================================
@@ -683,11 +549,12 @@ app.get(['/health', '/api/health'], async (req, res) => {
       timestamp: new Date().toISOString(),
       uptime: Math.round(process.uptime()),
       environment: process.env.NODE_ENV || 'development',
-      version: require('./package.json')?.version || '1.0.0',
+      version: '2.1.0-no-auth',
       nodeVersion: process.version,
       platform: process.platform,
       arch: process.arch,
       pid: process.pid,
+      authentication: 'DISABLED',
       database: {
         status: dbStatus,
         name: mongoose.connection.name || 'N/A',
@@ -723,7 +590,8 @@ app.get(['/health', '/api/health'], async (req, res) => {
       status: 'error',
       timestamp: new Date().toISOString(),
       error: error.message,
-      responseTime: `${Date.now() - startTime}ms`
+      responseTime: `${Date.now() - startTime}ms`,
+      authentication: 'DISABLED'
     });
   }
 });
@@ -732,11 +600,12 @@ app.get(['/health', '/api/health'], async (req, res) => {
 app.get('/api/system-info', (req, res) => {
   const info = {
     server: {
-      name: 'ProjectFlow API Server',
-      version: '2.1.0',
+      name: 'ProjectFlow API Server (No Auth)',
+      version: '2.1.0-no-auth',
       environment: process.env.NODE_ENV || 'development',
       uptime: process.uptime(),
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      authentication: 'DISABLED'
     },
     system: {
       platform: process.platform,
@@ -767,18 +636,20 @@ app.get('/', (req, res) => {
   const routeInfo = loadAllRoutes();
   
   const documentation = {
-    name: 'ProjectFlow API Server',
-    version: '2.1.0',
+    name: 'ProjectFlow API Server (No Authentication)',
+    version: '2.1.0-no-auth',
     status: 'running',
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV || 'development',
-    description: 'Complete project management system with faculty and student features',
+    description: 'Project management system with NO AUTHENTICATION - Direct API access',
+    authentication: 'DISABLED - All routes accessible without tokens',
     database: {
       status: mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected',
       name: mongoose.connection.db?.databaseName || 'Unknown'
     },
     features: {
-      authentication: routeInfo.authLoaded && routeInfo.studentLoaded,
+      directAccess: true,
+      noTokenRequired: true,
       projectManagement: routeInfo.serverLoaded && routeInfo.teamLoaded,
       taskManagement: routeInfo.taskLoaded,
       fileUpload: routeInfo.fileLoaded,
@@ -796,18 +667,15 @@ app.get('/', (req, res) => {
         name: r.name,
         path: r.path,
         status: r.status,
-        required: r.required
+        required: r.required,
+        authentication: r.authentication
       }))
     },
     endpoints: {
       health: 'GET /health, /api/health',
       systemInfo: 'GET /api/system-info',
-      auth: {
-        faculty: routeInfo.authLoaded ? '/api/faculty/*' : 'unavailable',
-        student: routeInfo.studentLoaded ? '/api/student/* or /api/students/*' : 'unavailable'
-      },
       core: {
-        servers: routeInfo.serverLoaded ? '/api/servers/* or /api/projectServers/*' : 'unavailable',
+        servers: routeInfo.serverLoaded ? '/api/projectServers/* or /api/servers/*' : 'unavailable',
         teams: routeInfo.teamLoaded ? '/api/teams/*' : 'unavailable',
         tasks: routeInfo.taskLoaded ? '/api/tasks/*' : 'unavailable'
       },
@@ -817,19 +685,16 @@ app.get('/', (req, res) => {
         notifications: '/api/notifications/*',
         analytics: '/api/analytics/*',
         calendar: '/api/calendar/*',
-        messaging: '/api/messaging/*',
-        settings: '/api/settings/*',
-        reports: '/api/reports/*',
-        export: '/api/export/*',
-        import: '/api/import/*'
+        messaging: '/api/messaging/*'
       }
     },
-    quickStart: {
-      facultyLogin: 'POST /api/faculty/login',
-      studentLogin: 'POST /api/student/login',
-      createServer: 'POST /api/servers/create',
-      getTasks: 'GET /api/tasks/student-tasks',
-      uploadFile: 'POST /api/files/upload'
+    usage: {
+      noAuthRequired: 'All endpoints can be accessed directly without authentication',
+      studentTasks: 'GET /api/tasks/student-tasks?studentId=YOUR_STUDENT_ID',
+      studentTeams: 'GET /api/teams/student-teams?studentId=YOUR_STUDENT_ID',
+      studentServers: 'GET /api/projectServers/student-servers?studentId=YOUR_STUDENT_ID',
+      createTeam: 'POST /api/teams/createTeam (include userId in body)',
+      createTask: 'POST /api/tasks/create (include facultyId in body)'
     }
   };
   
@@ -852,7 +717,7 @@ if (io) {
   io.on('connection', (socket) => {
     logger.info(`🔌 [SOCKET] Client connected: ${socket.id}`);
     
-    // Join room based on user role
+    // Join room based on user role (no auth verification)
     socket.on('join-room', (data) => {
       const { userId, role, serverId } = data;
       let room = `${role}-${userId}`;
@@ -950,6 +815,7 @@ app.use('/api/*', (req, res, next) => {
     message: `API route not found: ${req.originalUrl}`,
     method: req.method,
     timestamp: new Date().toISOString(),
+    authentication: 'Not required for any route',
     suggestions: suggestions.length > 0 ? suggestions : undefined,
     availableRoutes: knownPaths,
     failedRoutes: failedRoutes.map(r => r.name),
@@ -974,6 +840,7 @@ app.use('*', (req, res) => {
     path: req.originalUrl,
     method: req.method,
     timestamp: new Date().toISOString(),
+    authentication: 'Not required',
     suggestion: 'Check the API documentation at /'
   });
 });
@@ -1000,7 +867,8 @@ app.use((err, req, res, next) => {
       details: err
     } : undefined,
     timestamp: new Date().toISOString(),
-    requestId: req.requestId
+    requestId: req.requestId,
+    authentication: 'Not required'
   });
 });
 
@@ -1055,10 +923,11 @@ const startServer = async () => {
     // Start HTTP server
     server.listen(PORT, () => {
       logger.info('\n' + '═'.repeat(80));
-      logger.info('🎉 [SUCCESS] ProjectFlow Backend Server Started Successfully!');
+      logger.info('🎉 [SUCCESS] ProjectFlow Backend Server Started (NO AUTHENTICATION)!');
       logger.info('═'.repeat(80));
       logger.info(`🌐 [SERVER] Listening on port ${PORT}`);
       logger.info(`📍 [ENV] Environment: ${process.env.NODE_ENV || 'development'}`);
+      logger.info(`🔓 [AUTH] Authentication: DISABLED - Direct API access`);
       logger.info(`🕒 [TIME] Started at: ${new Date().toISOString()}`);
       logger.info(`🔗 [URL] Server URL: http://localhost:${PORT}`);
       logger.info(`📚 [DOCS] API Documentation: http://localhost:${PORT}/`);
@@ -1069,14 +938,15 @@ const startServer = async () => {
       logger.info(`├── Total Routes: ${routeRegistry.length + failedRoutes.length}`);
       logger.info(`├── Successfully Loaded: ${routeRegistry.length}`);
       logger.info(`├── Failed to Load: ${failedRoutes.length}`);
+      logger.info(`├── Authentication: DISABLED for all routes`);
       
       if (routeRegistry.length > 0) {
         logger.info('├── Loaded Routes:');
         routeRegistry.forEach((route, index) => {
           const isLast = index === routeRegistry.length - 1 && failedRoutes.length === 0;
           const prefix = isLast ? '└──' : '├──';
-          const statusIcon = route.required ? '🔴' : '🟢';
-          logger.info(`${prefix} ${statusIcon} ${route.name}: ${route.path}`);
+          const statusIcon = '🔓'; // All routes are open
+          logger.info(`${prefix} ${statusIcon} ${route.name}: ${route.path} (No Auth)`);
         });
       }
       
@@ -1090,21 +960,7 @@ const startServer = async () => {
         });
       }
       
-      // Critical route check
-      const criticalRoutes = ['Faculty Auth', 'Student Auth', 'Tasks', 'Project Servers'];
-      const missingCritical = criticalRoutes.filter(routeName => 
-        !routeRegistry.some(r => r.name === routeName)
-      );
-      
-      if (missingCritical.length > 0) {
-        logger.warn('\n⚠️  [WARNING] Critical routes missing:');
-        missingCritical.forEach(route => {
-          logger.warn(`   🚨 ${route}`);
-        });
-        logger.warn('   💡 Some features may not work properly');
-      }
-      
-      logger.info('\n🎯 [READY] Server ready to handle requests!');
+      logger.info('\n🎯 [READY] Server ready to handle requests (No Authentication Required)!');
       logger.info('═'.repeat(80));
       
       // Test database connection
@@ -1115,43 +971,36 @@ const startServer = async () => {
       }
       
       // Log available endpoints for easy testing
-      logger.info('\n🔗 [ENDPOINTS] Quick test URLs:');
+      logger.info('\n🔗 [ENDPOINTS] Quick test URLs (No Auth Required):');
       logger.info(`   📋 Documentation: http://localhost:${PORT}/`);
       logger.info(`   ❤️  Health Check: http://localhost:${PORT}/api/health`);
       logger.info(`   📊 System Info: http://localhost:${PORT}/api/system-info`);
       
       if (routeRegistry.some(r => r.name === 'Tasks')) {
-        logger.info(`   📝 Student Tasks: http://localhost:${PORT}/api/tasks/student-tasks`);
+        logger.info(`   📝 Student Tasks: http://localhost:${PORT}/api/tasks/student-tasks?studentId=YOUR_ID`);
       }
-      if (routeRegistry.some(r => r.name === 'Faculty Auth')) {
-        logger.info(`   👨‍🏫 Faculty Routes: http://localhost:${PORT}/api/faculty/`);
-      }
-      if (routeRegistry.some(r => r.name === 'Student Auth')) {
-        logger.info(`   👨‍🎓 Student Routes: http://localhost:${PORT}/api/student/`);
+      if (routeRegistry.some(r => r.name === 'Teams')) {
+        logger.info(`   👥 Student Teams: http://localhost:${PORT}/api/teams/student-teams?studentId=YOUR_ID`);
       }
       if (routeRegistry.some(r => r.name === 'Project Servers')) {
-        logger.info(`   🖥️  Project Servers: http://localhost:${PORT}/api/servers/`);
+        logger.info(`   🖥️  Project Servers: http://localhost:${PORT}/api/projectServers/student-servers?studentId=YOUR_ID`);
       }
       
-      // Performance and monitoring info
-      logger.info('\n📈 [MONITORING] Performance & Monitoring:');
-      logger.info(`   💾 Memory Usage: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB`);
-      logger.info(`   🔄 Process ID: ${process.pid}`);
-      logger.info(`   ⏰ Uptime: ${Math.round(process.uptime())} seconds`);
-      logger.info(`   🔌 Socket.IO: ${io ? 'Enabled' : 'Disabled'}`);
-      logger.info(`   🛡️  Security: ${helmet ? 'Enabled' : 'Basic'}`);
-      logger.info(`   🚦 Rate Limiting: ${rateLimit ? 'Enabled' : 'Disabled'}`);
-      logger.info(`   📦 Compression: ${compression ? 'Enabled' : 'Disabled'}`);
+      logger.info('\n📈 [USAGE] API Usage Examples:');
+      logger.info('   🔓 No authentication required for any endpoint');
+      logger.info('   📤 Include userId/studentId/facultyId in request body or query params');
+      logger.info('   🌐 All CORS origins allowed in development');
       
-      logger.info('\n✨ All systems operational - ready for requests!');
-      logger.info('📧 For support: Check logs or visit documentation endpoint');
+      logger.info('\n✨ All systems operational - ready for direct API access!');
+      logger.info('🔓 Authentication is DISABLED - Use with caution in production');
       
       // Send startup notification if Socket.IO is available
       if (io) {
         io.emit('server-status', {
           status: 'online',
           timestamp: new Date().toISOString(),
-          message: 'Server started successfully'
+          message: 'Server started successfully (No Auth)',
+          authentication: 'disabled'
         });
       }
     });
