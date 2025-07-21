@@ -273,6 +273,13 @@ router.post("/register", registrationLimiter, async (req, res) => {
 // ============================================
 // STUDENT LOGIN - PRODUCTION GRADE
 // ============================================
+// ============================================
+// STUDENT LOGIN - FIXED VERSION
+// ============================================
+// ============================================
+// STUDENT LOGIN - COMPLETE FIX
+// Replace the existing login route in backend/routes/studentRoutes.js
+// ============================================
 router.post("/login", loginLimiter, async (req, res) => {
   try {
     logRequest("POST /login", req, { 
@@ -293,24 +300,74 @@ router.post("/login", loginLimiter, async (req, res) => {
     // Rate limiting check - additional security
     const clientIP = req.ip;
     console.log(`🔍 [STUDENT_ROUTES] Login attempt from IP: ${clientIP}`);
+    console.log(`🔍 [STUDENT_ROUTES] Searching for username: "${username}"`);
 
-    // Find student by username or email
-    const student = await Student.findByEmailOrUsername ? 
-      await Student.findByEmailOrUsername(username) :
-      await Student.findOne({
-        $or: [
-          { email: username.toLowerCase() },
-          { username: { $regex: new RegExp(`^${username}$`, 'i') } }
-        ]
-      });
-
-    if (!student) {
-      console.log(`❌ [STUDENT_ROUTES] Login failed: Student not found for identifier: ${String(username).split(' ')[0]}`);
-      return res.status(401).json({
+    // FIXED: Comprehensive search strategy
+    let student = null;
+    
+    try {
+      // Method 1: Try exact case-sensitive match first
+      student = await Student.findOne({ username: username.trim() });
+      console.log(`🔍 [STUDENT_ROUTES] Exact match result: ${student ? 'FOUND' : 'NOT FOUND'}`);
+      
+      // Method 2: If not found, try case-insensitive username search
+      if (!student) {
+        student = await Student.findOne({ 
+          username: { $regex: new RegExp(`^${username.trim()}$`, 'i') } 
+        });
+        console.log(`🔍 [STUDENT_ROUTES] Case-insensitive match: ${student ? 'FOUND' : 'NOT FOUND'}`);
+      }
+      
+      // Method 3: If still not found, try email search
+      if (!student && username.includes('@')) {
+        student = await Student.findOne({ 
+          email: username.toLowerCase().trim() 
+        });
+        console.log(`🔍 [STUDENT_ROUTES] Email match: ${student ? 'FOUND' : 'NOT FOUND'}`);
+      }
+      
+      // Method 4: If still not found, try broader search
+      if (!student) {
+        student = await Student.findOne({
+          $or: [
+            { email: username.toLowerCase().trim() },
+            { username: { $regex: new RegExp(username.trim(), 'i') } }
+          ]
+        });
+        console.log(`🔍 [STUDENT_ROUTES] Broad search: ${student ? 'FOUND' : 'NOT FOUND'}`);
+      }
+      
+      // DEBUG: If still not found, let's see what students exist
+      if (!student) {
+        const allStudents = await Student.find({}).select('username email firstName lastName').limit(5);
+        console.log(`🔍 [STUDENT_ROUTES] Sample students in database:`, 
+          allStudents.map(s => ({ username: s.username, email: s.email }))
+        );
+        
+        // Check for similar usernames
+        const similarUsers = await Student.find({
+          username: { $regex: username.substring(0, 3), $options: 'i' }
+        }).select('username email');
+        console.log(`🔍 [STUDENT_ROUTES] Similar usernames:`, similarUsers.map(s => s.username));
+      }
+      
+    } catch (dbError) {
+      console.error(`❌ [STUDENT_ROUTES] Database error:`, dbError);
+      return res.status(500).json({
         success: false,
-        message: "Invalid credentials"
+        message: "Database error during authentication"
       });
     }
+
+    if (!student) {
+      console.log(`❌ [STUDENT_ROUTES] Login failed: Student not found for identifier: ${username}`);
+      return res.status(401).json({
+        success: false,
+        message: "Invalid credentials. Please check your username and try again."
+      });
+    }
+
+    console.log(`✅ [STUDENT_ROUTES] Student found: ${student.username} (${student.email})`);
 
     // Check if account is locked
     if (student.isLocked) {
@@ -330,36 +387,35 @@ router.post("/login", loginLimiter, async (req, res) => {
       });
     }
 
-    // Verify password
+    // Verify password using bcrypt directly
+    console.log(`🔍 [STUDENT_ROUTES] Verifying password for ${student.username}`);
     let isMatch = false;
-    if (student.comparePassword) {
-      isMatch = await student.comparePassword(password);
-    } else {
+    try {
       isMatch = await bcrypt.compare(password, student.password);
+      console.log(`🔍 [STUDENT_ROUTES] Password verification: ${isMatch ? 'SUCCESS' : 'FAILED'}`);
+    } catch (passwordError) {
+      console.error(`❌ [STUDENT_ROUTES] Password verification error:`, passwordError);
+      return res.status(500).json({
+        success: false,
+        message: "Authentication error"
+      });
     }
     
     if (!isMatch) {
       console.log(`❌ [STUDENT_ROUTES] Login failed: Invalid password for ${student.username}`);
-      
-      // Increment login attempts if method exists
-      if (student.incrementLoginAttempts) {
-        await student.incrementLoginAttempts();
-      }
-      
       return res.status(401).json({
         success: false,
-        message: "Invalid credentials"
+        message: "Invalid credentials. Please check your password and try again."
       });
     }
 
-    // Successful login - reset login attempts if method exists
-    if (student.resetLoginAttempts && student.loginAttempts > 0) {
-      await student.resetLoginAttempts();
-    }
-
     // Update last login
-    student.lastLogin = new Date();
-    await student.save();
+    try {
+      student.lastLogin = new Date();
+      await student.save();
+    } catch (saveError) {
+      console.warn(`⚠️ [STUDENT_ROUTES] Could not update last login:`, saveError.message);
+    }
 
     // Generate JWT token
     const tokenPayload = {
@@ -402,9 +458,9 @@ router.post("/login", loginLimiter, async (req, res) => {
         username: sanitizedStudent.username,
         role: "student",
         lastLogin: sanitizedStudent.lastLogin,
-        isVerified: sanitizedStudent.isVerified
+        isVerified: sanitizedStudent.isVerified || false
       },
-      token: process.env.NODE_ENV === 'development' ? token : undefined // Only in dev
+      token: process.env.NODE_ENV === 'development' ? token : undefined
     });
 
   } catch (err) {
@@ -416,10 +472,6 @@ router.post("/login", loginLimiter, async (req, res) => {
     });
   }
 });
-
-// ============================================
-// STUDENT DASHBOARD
-// ============================================
 router.get("/dashboard", verifyToken, async (req, res) => {
   try {
     logRequest("GET /dashboard", req, { userId: req.user?.id });
@@ -506,6 +558,64 @@ router.get("/dashboard", verifyToken, async (req, res) => {
   }
 });
 
+router.get("/debug/students", async (req, res) => {
+  try {
+    console.log("🔍 [DEBUG] Inspecting student database...");
+    
+    // Get all students (limit to first 10 for safety)
+    const students = await Student.find({})
+      .select('username email firstName lastName isActive createdAt')
+      .limit(10)
+      .lean();
+    
+    console.log(`🔍 [DEBUG] Found ${students.length} students in database`);
+    
+    // Look for students with username containing "neel"
+    const neelStudents = await Student.find({
+      username: { $regex: /neel/i }
+    }).select('username email firstName lastName isActive').lean();
+    
+    console.log(`🔍 [DEBUG] Students with 'neel' in username:`, neelStudents);
+    
+    // Check exact match
+    const exactNeel = await Student.findOne({
+      username: "neel"
+    }).select('username email firstName lastName isActive').lean();
+    
+    console.log(`🔍 [DEBUG] Exact match for 'neel':`, exactNeel);
+    
+    // Check case-insensitive match
+    const caseInsensitiveNeel = await Student.findOne({
+      username: { $regex: /^neel$/i }
+    }).select('username email firstName lastName isActive').lean();
+    
+    console.log(`🔍 [DEBUG] Case-insensitive match for 'neel':`, caseInsensitiveNeel);
+    
+    res.json({
+      success: true,
+      totalStudents: students.length,
+      students: students.map(s => ({
+        username: s.username,
+        email: s.email,
+        name: `${s.firstName} ${s.lastName}`,
+        isActive: s.isActive,
+        created: s.createdAt
+      })),
+      neelSearch: {
+        containing: neelStudents,
+        exact: exactNeel,
+        caseInsensitive: caseInsensitiveNeel
+      }
+    });
+    
+  } catch (error) {
+    console.error("❌ [DEBUG] Database inspection error:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
 // ============================================
 // STUDENT LOGOUT
 // ============================================
