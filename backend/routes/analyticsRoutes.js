@@ -4,7 +4,7 @@ const verifyToken = require("../middleware/verifyToken");
 const StudentTeam = require("../models/studentTeamSchema");
 const ProjectServer = require("../models/projectServerSchema");
 const Task = require("../models/taskSchema");
-
+const mongoose = require('mongoose');
 console.log("🔧 analyticsRoutes.js loaded");
 
 // ✅ Faculty Analytics

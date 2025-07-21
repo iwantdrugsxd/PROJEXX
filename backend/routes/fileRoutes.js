@@ -524,13 +524,18 @@ const submissionData = {
           task.submissions = [];
         }
 
-        if (existingSubmissionIndex >= 0) {
-          task.submissions[existingSubmissionIndex] = submissionData;
-          console.log(`📝 Updated existing submission for user ${req.user.id}`);
-        } else {
-          task.submissions.push(submissionData);
-          console.log(`📝 Created new submission for user ${req.user.id}`);
-        }
+       if (existingSubmissionIndex >= 0) {
+  // Keep existing _id if valid
+  if (mongoose.Types.ObjectId.isValid(task.submissions[existingSubmissionIndex]._id)) {
+    submissionData._id = task.submissions[existingSubmissionIndex]._id;
+  } else {
+    submissionData._id = new mongoose.Types.ObjectId(); // Generate new ObjectId
+  }
+  task.submissions[existingSubmissionIndex] = submissionData;
+} else {
+  submissionData._id = new mongoose.Types.ObjectId(); // Generate new ObjectId
+  task.submissions.push(submissionData);
+}
 
         task.updatedAt = new Date();
         await task.save();

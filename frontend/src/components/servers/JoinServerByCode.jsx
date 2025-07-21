@@ -1,7 +1,8 @@
+// src/components/JoinServerByCode.jsx
 import React, { useState } from 'react';
-import { Server, Hash, AlertCircle, CheckCircle, Loader2 } from 'lucide-react';
+import { Server, AlertCircle, CheckCircle, Loader2, X } from 'lucide-react';
 
-const JoinServerByCode = ({ onServerJoined, onClose }) => {
+const JoinServerByCode = ({ onServerJoined, onClose, user }) => {
   const [serverCode, setServerCode] = useState('');
   const [joining, setJoining] = useState(false);
   const [error, setError] = useState('');
@@ -14,6 +15,18 @@ const JoinServerByCode = ({ onServerJoined, onClose }) => {
 
     if (!serverCode.trim()) {
       setError('Server code is required');
+      return;
+    }
+
+    // Get user ID from props or fallback methods
+    const userId = user?.id || user?._id ||
+                   localStorage.getItem('userId') || 
+                   sessionStorage.getItem('userId') || 
+                   window.currentUser?.id || 
+                   window.currentUser?._id;
+
+    if (!userId) {
+      setError('User ID not found. Please log in again.');
       return;
     }
 
@@ -32,7 +45,9 @@ const JoinServerByCode = ({ onServerJoined, onClose }) => {
           'Accept': 'application/json'
         },
         body: JSON.stringify({
-          code: serverCode.trim().toUpperCase()
+          code: serverCode.trim().toUpperCase(),
+          studentId: userId,  // Your backend expects studentId
+          userRole: 'student'  // Add userRole
         })
       });
 
@@ -71,9 +86,18 @@ const JoinServerByCode = ({ onServerJoined, onClose }) => {
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
-        <div className="flex items-center mb-4">
-          <Server className="h-6 w-6 text-blue-600 mr-2" />
-          <h2 className="text-xl font-semibold">Join Server</h2>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center">
+            <Server className="h-6 w-6 text-blue-600 mr-2" />
+            <h2 className="text-xl font-semibold">Join Server</h2>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600"
+            disabled={joining}
+          >
+            <X className="w-5 h-5" />
+          </button>
         </div>
 
         {success ? (
@@ -89,20 +113,19 @@ const JoinServerByCode = ({ onServerJoined, onClose }) => {
                 Server Code
               </label>
               <div className="relative">
-                <Hash className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
                 <input
                   type="text"
                   value={serverCode}
                   onChange={(e) => setServerCode(e.target.value.toUpperCase())}
-                  className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Enter 6-character code"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-center text-lg font-mono tracking-wider"
+                  placeholder="ABCD12"
                   maxLength={6}
                   disabled={joining}
                   required
                 />
               </div>
               <p className="text-xs text-gray-500 mt-1">
-                Ask your instructor for the server code
+                Ask your instructor for the 6-character server code
               </p>
             </div>
 
@@ -149,62 +172,4 @@ const JoinServerByCode = ({ onServerJoined, onClose }) => {
   );
 };
 
-// 4️⃣ USAGE EXAMPLE COMPONENT
-// How to use these components together
-const ServerTeamManager = () => {
-  const [showCreateTeam, setShowCreateTeam] = useState(false);
-  const [showJoinServer, setShowJoinServer] = useState(false);
-  const [selectedServerId, setSelectedServerId] = useState(null);
-
-  const handleTeamCreated = (team) => {
-    console.log('Team created:', team);
-    // Refresh teams list
-  };
-
-  const handleTeamJoined = (team) => {
-    console.log('Joined team:', team);
-    // Refresh teams list
-  };
-
-  const handleServerJoined = (server) => {
-    console.log('Joined server:', server);
-    // Refresh servers list
-  };
-
-  return (
-    <div>
-      {/* Buttons to trigger modals */}
-      <button 
-        onClick={() => setShowJoinServer(true)}
-        className="bg-blue-600 text-white px-4 py-2 rounded-md mr-2"
-      >
-        Join Server
-      </button>
-      
-      <button 
-        onClick={() => setShowCreateTeam(true)}
-        className="bg-green-600 text-white px-4 py-2 rounded-md"
-      >
-        Create Team
-      </button>
-
-      {/* Modals */}
-      {showJoinServer && (
-        <JoinServerByCode
-          onServerJoined={handleServerJoined}
-          onClose={() => setShowJoinServer(false)}
-        />
-      )}
-
-      {showCreateTeam && selectedServerId && (
-        <TeamCreator
-          serverId={selectedServerId}
-          onTeamCreated={handleTeamCreated}
-          onClose={() => setShowCreateTeam(false)}
-        />
-      )}
-    </div>
-  );
-};
-
-export {  JoinServerByCode};
+export default JoinServerByCode;

@@ -5,7 +5,7 @@ const Message = require("../models/messageSchema");
 const Student = require("../models/studentSchema");
 const Faculty = require("../models/facultySchema");
 const verifyToken = require("../middleware/verifyToken");
-
+const mongoose = require('mongoose');
 console.log("🔧 messagingRoutes.js loaded");
 
 // ✅ Create new chat

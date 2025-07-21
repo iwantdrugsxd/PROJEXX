@@ -37,7 +37,7 @@ import {
   Engineering,
 } from '@mui/icons-material';
 
-import { logout } from '../../store/slices/authSlice';
+// import { logout } from '../../store/slices/authSlice';
 
 const drawerWidth = 280;
 

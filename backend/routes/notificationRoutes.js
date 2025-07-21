@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const verifyToken = require("../middleware/verifyToken");
-
+const mongoose = require('mongoose');
 console.log("🔧 notificationRoutes.js loaded");
 
 // ✅ Get user notifications
