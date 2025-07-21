@@ -15,12 +15,16 @@ function LoginPage() {
     setError('');
 
     try {
+      // Sanitize username to remove any appended paths
+      const sanitizedUsername = formData.username.split(' ')[0];
+      const loginData = { ...formData, username: sanitizedUsername };
+
       const endpoint = userType === 'faculty' ? 'faculty' : 'student';
       const response = await fetch(`${API_BASE}/${endpoint}/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify(formData)
+        body: JSON.stringify(loginData)
       });
 
       const data = await response.json();
